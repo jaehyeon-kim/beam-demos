@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  jupyter:
+    image: pybeam:2.53.0
+    container_name: jupyter
+    ports:
+      - 8888:8888
+    networks:
+      - appnet
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+      NOTEBOOK_ARGS: "--ServerApp.token='' --ServerApp.password=''"
+      GOOGLE_APPLICATION_CREDENTIALS: "sa_key/key.json"
+    volumes:
+      - ./src:/home/jovyan
+
+networks:
+  appnet:
+    name: beam-net

@@ -1,0 +1,14 @@
+src/.cache
+src/.gnupg
+src/.ipynb_checkpoints
+src/.ipython
+src/.jupyter
+src/.local
+src/.npm
+src/.ssh
+src/.vscode-server
+src/.bash_history
+src/.gitconfig
+src/.python_history
+output*
+key.json

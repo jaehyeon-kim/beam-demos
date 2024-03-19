@@ -1,0 +1,1 @@
+apache-beam[gcp,aws,azure,test,docs,interactive]==2.53.0
