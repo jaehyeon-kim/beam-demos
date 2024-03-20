@@ -1,8 +1,9 @@
 import os
 import argparse
 import json
-import logging
+import re
 import typing
+import logging
 
 import apache_beam as beam
 from apache_beam.io import kafka
@@ -10,54 +11,47 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
 
-class EventLog(typing.NamedTuple):
-    ip: str
-    id: str
-    lat: float
-    lng: float
-    user_agent: str
-    age_bracket: str
-    opted_into_marketing: bool
-    http_request: str
-    http_response: int
-    file_size_bytes: int
-    event_datetime: str
-    event_ts: int
-
-
-beam.coders.registry.register_coder(EventLog, beam.coders.RowCoder)
-
-
 def decode_message(kafka_kv: tuple):
+    print(kafka_kv)
     return kafka_kv[1].decode("utf-8")
 
 
-def create_message(element: EventLog):
-    key = {"event_id": element.id, "event_ts": element.event_ts}
-    value = element._asdict()
-    print(key)
-    return json.dumps(key).encode("utf-8"), json.dumps(value).encode("utf-8")
+def tokenize(element: str):
+    return re.findall(r"[A-Za-z\']+", element)
 
 
-def parse_json(element: str):
-    row = json.loads(element)
-    # lat/lng sometimes empty string
-    if not row["lat"] or not row["lng"]:
-        row = {**row, **{"lat": -1, "lng": -1}}
-    return EventLog(**row)
+def create_message(element: dict):
+    print(element)
+    return element["word"].encode("utf-8"), json.dumps(element).encode("utf-8")
+
+
+class AddWindowTS(beam.DoFn):
+    def process(self, element: tuple, window=beam.DoFn.WindowParam):
+        window_start = window.start.to_utc_datetime().isoformat(timespec="seconds")
+        window_end = window.end.to_utc_datetime().isoformat(timespec="seconds")
+        output = {
+            "word": element[0],
+            "count": element[1],
+            "window_start": window_start,
+            "window_end": window_end,
+        }
+        yield output
 
 
 def run():
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
-    parser.add_argument(
-        "--runner", default="FlinkRunner", help="Specify Apache Beam Runner"
-    )
+    parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
     parser.add_argument(
         "--use_own",
         action="store_true",
         default="Flag to indicate whether to use an own local cluster",
     )
+    parser.add_argument("--length", default="5", type=int, help="Window length")
+    parser.add_argument("--top", default="3", type=int, help="Top k")
+    parser.add_argument("--input", default="top-k-words-input", help="Input topic")
+    parser.add_argument("--output", default="top-k-words-output", help="Ouput topic")
     opts = parser.parse_args()
+    print(opts)
 
     pipeline_opts = {
         "runner": opts.runner,
@@ -68,7 +62,7 @@ def run():
         "experiments": [
             "use_deprecated_read"
         ],  ## https://github.com/apache/beam/issues/20979
-        "checkpointing_interval": "60000",
+        "checkpointing_interval": "2000",
     }
     if opts.use_own is True:
         pipeline_opts = {**pipeline_opts, **{"flink_master": "localhost:8081"}}
@@ -89,24 +83,30 @@ def run():
                 ),
                 "auto.offset.reset": "earliest",
                 # "enable.auto.commit": "true",
-                "group.id": "top-k",
+                "group.id": "top-k-words",
             },
-            topics=["top-k-input"],
+            topics=[opts.input],
         )
         | "Decode messages" >> beam.Map(decode_message)
-        # | "Parse elements" >> beam.Map(parse_json).with_output_types(EventLog)
-        # | "Create messages"
-        # >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
-        # | "Write to Kafka"
-        # >> kafka.WriteToKafka(
-        #     producer_config={
-        #         "bootstrap.servers": os.getenv(
-        #             "BOOTSTRAP_SERVERS",
-        #             "host.docker.internal:29092",
-        #         )
-        #     },
-        #     topic="top-k-output",
-        # )
+        | "Windowing" >> beam.WindowInto(beam.window.FixedWindows(opts.length))
+        | "Extract words" >> beam.FlatMap(tokenize)
+        | "Count per word" >> beam.combiners.Count.PerElement()
+        | "Top k words"
+        >> beam.combiners.Top.Of(opts.top, lambda e: e[1]).without_defaults()
+        | "Flatten" >> beam.FlatMap(lambda e: e)
+        | "Add window timestamp" >> beam.ParDo(AddWindowTS())
+        | "Create messages"
+        >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
+        | "Write to Kafka"
+        >> kafka.WriteToKafka(
+            producer_config={
+                "bootstrap.servers": os.getenv(
+                    "BOOTSTRAP_SERVERS",
+                    "host.docker.internal:29092",
+                )
+            },
+            topic=opts.output,
+        )
     )
 
     logging.getLogger().setLevel(logging.WARN)
