@@ -55,14 +55,14 @@ def run():
 
     pipeline_opts = {
         "runner": opts.runner,
-        "job_name": "kafka-io",
+        "job_name": "top-k-words",
         "environment_type": "LOOPBACK",
         "streaming": True,
         "parallelism": 3,
         "experiments": [
             "use_deprecated_read"
         ],  ## https://github.com/apache/beam/issues/20979
-        "checkpointing_interval": "2000",
+        "checkpointing_interval": "60000",
     }
     if opts.use_own is True:
         pipeline_opts = {**pipeline_opts, **{"flink_master": "localhost:8081"}}
@@ -109,7 +109,7 @@ def run():
         )
     )
 
-    logging.getLogger().setLevel(logging.WARN)
+    logging.getLogger().setLevel(logging.INFO)
     logging.info("Building pipeline ...")
 
     p.run().wait_until_finish()
