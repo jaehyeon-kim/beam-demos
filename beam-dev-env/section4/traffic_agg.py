@@ -30,9 +30,6 @@ beam.coders.registry.register_coder(EventLog, beam.coders.RowCoder)
 
 
 def decode_message(kafka_kv: tuple):
-    # Incoming Kafka records must have a key associated.
-    # Otherwise, Beam throws an exception with null keys.
-    #   Example: (b'key', b'value')
     return kafka_kv[1].decode("utf-8")
 
 
