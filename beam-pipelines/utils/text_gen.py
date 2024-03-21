@@ -5,7 +5,7 @@ from kafka import KafkaProducer
 from faker import Faker
 
 
-class TopKGen:
+class TextGen:
     def __init__(self, bootstrap_servers: list, topic_name: str) -> None:
         self.bootstrap_servers = bootstrap_servers
         self.topic_name = topic_name
@@ -33,9 +33,9 @@ class TopKGen:
 
 if __name__ == "__main__":
     BOOTSTRAP_SERVERS = [os.getenv("BOOTSTRAP_SERVERS", "localhost:29092")]
-    TOPIC_NAME = os.getenv("TOPIC_NAME", "top-k-words-input")
+    TOPIC_NAME = os.getenv("TOPIC_NAME", "text-input")
 
-    data_gen = TopKGen(BOOTSTRAP_SERVERS, TOPIC_NAME)
+    data_gen = TextGen(BOOTSTRAP_SERVERS, TOPIC_NAME)
     fake = Faker()
 
     num_events = 0
