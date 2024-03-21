@@ -1,5 +1,6 @@
 import os
 import time
+import argparse
 
 from kafka import KafkaProducer
 from faker import Faker
@@ -32,10 +33,31 @@ class TextGen:
 
 
 if __name__ == "__main__":
-    BOOTSTRAP_SERVERS = [os.getenv("BOOTSTRAP_SERVERS", "localhost:29092")]
-    TOPIC_NAME = os.getenv("TOPIC_NAME", "text-input")
+    parser = argparse.ArgumentParser(__file__, description="Text Data Generator")
+    parser.add_argument(
+        "--bootstrap_servers",
+        "-b",
+        type=str,
+        default="localhost:29092",
+        help="Comma separated string of Kafka bootstrap addresses",
+    )
+    parser.add_argument(
+        "--topic_name",
+        "-t",
+        type=str,
+        default="text-input",
+        help="Kafka topic name",
+    )
+    parser.add_argument(
+        "--delay_seconds",
+        "-d",
+        type=float,
+        default=1,
+        help="The amount of time that a record should be delayed. Only applicable to streaming.",
+    )
+    args = parser.parse_args()
 
-    data_gen = TextGen(BOOTSTRAP_SERVERS, TOPIC_NAME)
+    data_gen = TextGen(args.bootstrap_servers, args.topic_name)
     fake = Faker()
 
     num_events = 0
@@ -45,4 +67,4 @@ if __name__ == "__main__":
         data_gen.send_to_kafka(text)
         if num_events % 10 == 0:
             print(f"{num_events} text sent. current - {text}")
-        time.sleep(1)
+        time.sleep(args.delay_seconds)
