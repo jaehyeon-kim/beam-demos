@@ -24,12 +24,8 @@ def tokenize(element: str):
 
 
 def create_message(element: str):
-    message = {
-        "word": element,
-        "created_at": datetime.datetime.now().isoformat(timespec="milliseconds"),
-    }
-    print(message)
-    return element.encode("utf-8"), json.dumps(message).encode("utf-8")
+    print(element)
+    return "".encode("utf-8"), element.encode("utf-8")
 
 
 ## not working for global winodw

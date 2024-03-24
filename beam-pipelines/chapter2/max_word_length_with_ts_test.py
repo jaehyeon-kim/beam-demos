@@ -3,14 +3,21 @@ import unittest
 
 import apache_beam as beam
 from apache_beam.coders import coders
+from apache_beam.utils.timestamp import Timestamp
 from apache_beam.testing.test_pipeline import TestPipeline
-from apache_beam.testing.util import assert_that, equal_to
+from apache_beam.testing.util import assert_that, equal_to, TestWindowedValue
 from apache_beam.testing.test_stream import TestStream
 from apache_beam.transforms.trigger import AfterCount, AccumulationMode, AfterWatermark
-from apache_beam.transforms.window import GlobalWindows, TimestampedValue
+from apache_beam.transforms.window import (
+    GlobalWindow,
+    GlobalWindows,
+    TimestampedValue,
+    TimestampCombiner,
+)
+from apache_beam.transforms.util import Reify
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
-from max_word_length import tokenize
+from max_word_length_with_ts import tokenize
 
 
 def main(out=sys.stderr, verbosity=2):
@@ -50,17 +57,35 @@ class MaxWordLengthTest(unittest.TestCase):
                     GlobalWindows(),
                     trigger=AfterWatermark(early=AfterCount(1)),
                     allowed_lateness=0,
+                    timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
                     accumulation_mode=AccumulationMode.ACCUMULATING,
                 )
                 | "Extract words" >> beam.FlatMap(tokenize)
                 | "Get longest word"
                 >> beam.combiners.Top.Of(1, key=len).without_defaults()
                 | "Flatten" >> beam.FlatMap(lambda e: e)
+                | "Reify" >> Reify.Timestamp()
             )
 
-            EXPECTED_OUTPUT = ["a", "bb", "ccc", "ccc", "ccc"]
+            EXPECTED_OUTPUT = [
+                TestWindowedValue(
+                    value="a", timestamp=Timestamp(0), windows=[GlobalWindow()]
+                ),
+                TestWindowedValue(
+                    value="bb", timestamp=Timestamp(10), windows=[GlobalWindow()]
+                ),
+                TestWindowedValue(
+                    value="ccc", timestamp=Timestamp(20), windows=[GlobalWindow()]
+                ),
+                TestWindowedValue(
+                    value="ccc", timestamp=Timestamp(30), windows=[GlobalWindow()]
+                ),
+                TestWindowedValue(
+                    value="ccc", timestamp=Timestamp(30), windows=[GlobalWindow()]
+                ),
+            ]
 
-            assert_that(output, equal_to(EXPECTED_OUTPUT))
+            assert_that(output, equal_to(EXPECTED_OUTPUT), reify_windows=True)
 
 
 if __name__ == "__main__":
