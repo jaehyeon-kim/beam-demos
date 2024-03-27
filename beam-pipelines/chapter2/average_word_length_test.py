@@ -7,7 +7,7 @@ from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that, equal_to
 from apache_beam.testing.test_stream import TestStream
 from apache_beam.transforms.trigger import AfterCount, AccumulationMode, Repeatedly
-from apache_beam.transforms.window import GlobalWindows
+from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
 from average_word_length import tokenize, AverageFn
@@ -49,10 +49,12 @@ class MaxWordLengthTest(unittest.TestCase):
                     GlobalWindows(),
                     trigger=Repeatedly(AfterCount(1)),
                     allowed_lateness=0,
+                    timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
                     accumulation_mode=AccumulationMode.ACCUMULATING,
                 )
                 | "Extract words" >> beam.FlatMap(tokenize)
-                | "Get avg word length" >> beam.CombineGlobally(AverageFn()).without_defaults()
+                | "Get avg word length"
+                >> beam.CombineGlobally(AverageFn()).without_defaults()
             )
 
             EXPECTED_OUTPUT = [1.0, 1.5, 2.0]

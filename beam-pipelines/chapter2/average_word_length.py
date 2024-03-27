@@ -8,17 +8,20 @@ import typing
 
 import apache_beam as beam
 from apache_beam.io import kafka
-from apache_beam.transforms.window import GlobalWindows
+from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
 from apache_beam.transforms.trigger import AfterCount, AccumulationMode, Repeatedly
 from apache_beam.transforms.util import Reify
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
+
 class AverageAccumulator(typing.NamedTuple):
     length: int
     count: int
 
+
 beam.coders.registry.register_coder(AverageAccumulator, beam.coders.RowCoder)
+
 
 def decode_message(kafka_kv: tuple):
     print(kafka_kv)
@@ -34,24 +37,31 @@ def create_message(element: typing.Tuple[datetime.datetime, float]):
     print(msg)
     return "".encode("utf-8"), msg.encode("utf-8")
 
+
 class AddTS(beam.DoFn):
     def process(self, avg_len: float, ts_param=beam.DoFn.TimestampParam):
         yield ts_param.to_utc_datetime(), avg_len
 
+
 class AverageFn(beam.CombineFn):
     def create_accumulator(self):
         return AverageAccumulator(length=0, count=0)
+
     def add_input(self, mutable_accumulator: AverageAccumulator, element: str):
         length, count = tuple(mutable_accumulator)
         return AverageAccumulator(length=length + len(element), count=count + 1)
+
     def merge_accumulators(self, accumulators: typing.List[AverageAccumulator]):
         lengths, counts = zip(*accumulators)
         return AverageAccumulator(length=sum(lengths), count=sum(counts))
+
     def extract_output(self, accumulator: AverageAccumulator):
         length, count = tuple(accumulator)
         return length / count if count else float("NaN")
+
     def get_accumulator_coder(self):
         return beam.coders.registry.get_coder(AverageAccumulator)
+
 
 def run():
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
@@ -62,15 +72,13 @@ def run():
         default="Flag to indicate whether to use an own local cluster",
     )
     parser.add_argument("--input", default="text-input", help="Input topic")
-    parser.add_argument(
-        "--output", default="max-word-length-output", help="Ouput topic"
-    )
+    parser.add_argument("--output", default="average-word-length", help="Ouput topic")
     opts = parser.parse_args()
     print(opts)
 
     pipeline_opts = {
         "runner": opts.runner,
-        "job_name": "max-word-length",
+        "job_name": opts.output,
         "environment_type": "LOOPBACK",
         "streaming": True,
         "parallelism": 3,
@@ -98,7 +106,7 @@ def run():
                 ),
                 "auto.offset.reset": "earliest",
                 # "enable.auto.commit": "true",
-                "group.id": "max-word-length",
+                "group.id": opts.output,
             },
             topics=[opts.input],
         )
@@ -108,6 +116,7 @@ def run():
             GlobalWindows(),
             trigger=Repeatedly(AfterCount(1)),
             allowed_lateness=0,
+            timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
             accumulation_mode=AccumulationMode.ACCUMULATING,
             # closing behaviour - EMIT_ALWAYS, on_time_behavior - FIRE_ALWAYS
         )
@@ -129,7 +138,7 @@ def run():
         )
     )
 
-    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger().setLevel(logging.WARN)
     logging.info("Building pipeline ...")
 
     p.run().wait_until_finish()

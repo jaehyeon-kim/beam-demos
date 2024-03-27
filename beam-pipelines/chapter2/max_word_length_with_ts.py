@@ -45,14 +45,14 @@ def run():
     )
     parser.add_argument("--input", default="text-input", help="Input topic")
     parser.add_argument(
-        "--output", default="max-word-length-output", help="Ouput topic"
+        "--output", default="max-word-length-with-ts", help="Ouput topic"
     )
     opts = parser.parse_args()
     print(opts)
 
     pipeline_opts = {
         "runner": opts.runner,
-        "job_name": "max-word-length",
+        "job_name": opts.output,
         "environment_type": "LOOPBACK",
         "streaming": True,
         "parallelism": 3,
@@ -80,7 +80,7 @@ def run():
                 ),
                 "auto.offset.reset": "earliest",
                 # "enable.auto.commit": "true",
-                "group.id": "max-word-length",
+                "group.id": opts.output,
             },
             topics=[opts.input],
         )
