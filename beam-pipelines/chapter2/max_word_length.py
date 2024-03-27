@@ -27,18 +27,14 @@ def create_message(element: str):
 
 
 ## not working for global winodw
-##  OverflowError: date value out of range
+##  OverflowError: date value out of rangeclass AddWindowTS(beam.DoFn):
 # class AddWindowTS(beam.DoFn):
-#     def process(self, element: str, window=beam.DoFn.WindowParam):
-#         window_start = window.start.to_utc_datetime().isoformat(timespec="seconds")
-#         window_end = window.end.to_utc_datetime().isoformat(timespec="seconds")
-#         output = {
-#             "word": element,
-#             "length": len(element),
-#             "window_start": window_start,
-#             "window_end": window_end,
-#         }
-#         yield output
+#     def process(self, avg_len: float, win_param=beam.DoFn.WindowParam):
+#         yield (
+#             win_param.start.to_utc_datetime(),
+#             win_param.end.to_utc_datetime(),
+#             avg_len,
+#         )
 
 
 def run():

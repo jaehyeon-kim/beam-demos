@@ -1,4 +1,5 @@
 import os
+import datetime
 import argparse
 import json
 import re
@@ -20,22 +21,25 @@ def tokenize(element: str):
     return re.findall(r"[A-Za-z\']+", element)
 
 
-def create_message(element: dict):
-    print(element)
-    return element["word"].encode("utf-8"), json.dumps(element).encode("utf-8")
+def create_message(element: typing.Tuple[datetime.datetime, datetime.datetime, float]):
+    msg = json.dumps(
+        {
+            "window_start": element[0].isoformat(timespec="seconds"),
+            "window_end": element[1].isoformat(timespec="seconds"),
+            "avg_len": element[2],
+        }
+    )
+    print(msg)
+    return "".encode("utf-8"), msg.encode("utf-8")
 
 
 class AddWindowTS(beam.DoFn):
-    def process(self, element: tuple, win_param=beam.DoFn.WindowParam):
-        window_start = win_param.start.to_utc_datetime().isoformat(timespec="seconds")
-        window_end = win_param.end.to_utc_datetime().isoformat(timespec="seconds")
-        output = {
-            "word": element[0],
-            "count": element[1],
-            "window_start": window_start,
-            "window_end": window_end,
-        }
-        yield output
+    def process(self, avg_len: float, win_param=beam.DoFn.WindowParam):
+        yield (
+            win_param.start.to_utc_datetime(),
+            win_param.end.to_utc_datetime(),
+            avg_len,
+        )
 
 
 def run():
