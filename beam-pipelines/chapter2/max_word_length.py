@@ -50,13 +50,17 @@ def run():
         default="Flag to indicate whether to use an own local cluster",
     )
     parser.add_argument("--input", default="text-input", help="Input topic")
-    parser.add_argument("--output", default="max-word-length", help="Ouput topic")
+    parser.add_argument(
+        "--job_name",
+        default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
+        help="Job name",
+    )
     opts = parser.parse_args()
     print(opts)
 
     pipeline_opts = {
         "runner": opts.runner,
-        "job_name": opts.output,
+        "job_name": opts.job_name,
         "environment_type": "LOOPBACK",
         "streaming": True,
         "parallelism": 3,
@@ -84,7 +88,7 @@ def run():
                 ),
                 "auto.offset.reset": "earliest",
                 # "enable.auto.commit": "true",
-                "group.id": opts.output,
+                "group.id": opts.job_name,
             },
             topics=[opts.input],
         )
@@ -109,7 +113,7 @@ def run():
                     "host.docker.internal:29092",
                 )
             },
-            topic=opts.output,
+            topic=opts.job_name,
         )
     )
 
