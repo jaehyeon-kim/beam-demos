@@ -9,8 +9,6 @@ import typing
 import apache_beam as beam
 from apache_beam.io import kafka
 from apache_beam.transforms.window import SlidingWindows
-from apache_beam.transforms.trigger import AfterCount, AccumulationMode, Repeatedly
-from apache_beam.transforms.util import Reify
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
@@ -32,15 +30,25 @@ def tokenize(element: str):
     return re.findall(r"[A-Za-z\']+", element)
 
 
-def create_message(element: typing.Tuple[datetime.datetime, float]):
-    msg = json.dumps({"created_at": element[0].isoformat(), "avg_len": element[1]})
+def create_message(element: typing.Tuple[datetime.datetime, datetime.datetime, float]):
+    msg = json.dumps(
+        {
+            "window_start": element[0].isoformat(timespec="seconds"),
+            "window_end": element[1].isoformat(timespec="seconds"),
+            "avg_len": element[2],
+        }
+    )
     print(msg)
     return "".encode("utf-8"), msg.encode("utf-8")
 
 
-class AddTS(beam.DoFn):
-    def process(self, avg_len: float, ts_param=beam.DoFn.TimestampParam):
-        yield ts_param.to_utc_datetime(), avg_len
+class AddWindowTS(beam.DoFn):
+    def process(self, avg_len: float, win_param=beam.DoFn.WindowParam):
+        yield (
+            win_param.start.to_utc_datetime(),
+            win_param.end.to_utc_datetime(),
+            avg_len,
+        )
 
 
 class AverageFn(beam.CombineFn):
@@ -71,11 +79,16 @@ def run():
         action="store_true",
         default="Flag to indicate whether to use an own local cluster",
     )
+    parser.add_argument("--size", type=int, default=10, help="Window size")
+    parser.add_argument("--period", type=int, default=2, help="Window period")
     parser.add_argument("--input", default="text-input", help="Input topic")
     parser.add_argument(
         "--job_name",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
         help="Job name",
+    )
+    parser.add_argument(
+        "--savepoint_path", default=None, help="Flink job save point path"
     )
     opts = parser.parse_args()
     print(opts)
@@ -93,6 +106,8 @@ def run():
     }
     if opts.use_own is True:
         pipeline_opts = {**pipeline_opts, **{"flink_master": "localhost:8081"}}
+    if opts.savepoint_path is not None:
+        pipeline_opts = {**pipeline_opts, **{"savepoint_path": opts.savepoint_path}}
     print(pipeline_opts)
     options = PipelineOptions([], **pipeline_opts)
     # Required, else it will complain that when importing worker functions
@@ -117,16 +132,11 @@ def run():
         | "Decode messages" >> beam.Map(decode_message)
         | "Windowing"
         >> beam.WindowInto(
-            SlidingWindows(size=10, period=2),
-            trigger=Repeatedly(AfterCount(1)),
-            allowed_lateness=0,
-            accumulation_mode=AccumulationMode.ACCUMULATING,
-            # closing behaviour - EMIT_ALWAYS, on_time_behavior - FIRE_ALWAYS
+            SlidingWindows(size=opts.size, period=opts.period),
         )
         | "Extract words" >> beam.FlatMap(tokenize)
         | "Get avg word length" >> beam.CombineGlobally(AverageFn()).without_defaults()
-        | "Reify" >> Reify.Timestamp()
-        | "Add timestamp" >> beam.ParDo(AddTS())
+        | "Add window timestamp" >> beam.ParDo(AddWindowTS())
         | "Create messages"
         >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
         | "Write to Kafka"
