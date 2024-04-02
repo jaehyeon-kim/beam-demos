@@ -1,24 +1,11 @@
 import os
-import datetime
 import argparse
 import logging
 import re
 import typing
+import math
 
 import apache_beam as beam
-from apache_beam.coders import coders
-from apache_beam.transforms.trigger import (
-    AccumulationMode,
-    AfterProcessingTime,
-    Repeatedly,
-)
-from apache_beam.testing.test_stream import TestStream
-from apache_beam.transforms.window import (
-    GlobalWindows,
-    TimestampedValue,
-    TimestampCombiner,
-    Duration,
-)
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import StandardOptions
 
@@ -27,15 +14,6 @@ class Position(typing.NamedTuple):
     latitude: float
     longitude: float
     timestamp: int
-
-
-class Metric(typing.NamedTuple):
-    length: float
-    duration: int
-
-
-beam.coders.registry.register_coder(Position, beam.coders.RowCoder)
-beam.coders.registry.register_coder(Metric, beam.coders.RowCoder)
 
 
 def read_file(filename: str, inputpath: str):
@@ -50,9 +28,28 @@ def to_positions(input: str):
     )
 
 
-class AddTimestampDoFn(beam.DoFn):
-    def process(self, element: typing.Tuple[str, Position]):
-        yield TimestampedValue(element, element[1].timestamp)
+def distance(first: Position, second: Position):
+    EARTH_DIAMETER = 6_371_000
+    delta_latitude = (first.latitude - second.latitude) * math.pi / 180
+    delta_longitude = (first.longitude - second.longitude) * math.pi / 180
+    latitude_inc_in_meters = math.sqrt(2 * (1 - math.cos(delta_latitude)))
+    longitude_inc_in_meters = math.sqrt(2 * (1 - math.cos(delta_longitude)))
+    return EARTH_DIAMETER * math.sqrt(
+        latitude_inc_in_meters * latitude_inc_in_meters
+        + longitude_inc_in_meters * longitude_inc_in_meters
+    )
+
+
+def compute_matrics(key: str, positions: typing.List[Position]):
+    last: Position = None
+    total_time = 0
+    total_distance = 0
+    for p in sorted(positions, key=lambda p: p.timestamp):
+        if last is not None:
+            total_distance += distance(last, p)
+            total_time += p.timestamp - last.timestamp
+        last = p
+    return key, total_time, total_distance
 
 
 def run():
@@ -71,30 +68,17 @@ def run():
     options = PipelineOptions()
     options.view_as(StandardOptions).runner = opts.runner
 
-    records = read_file("test-tracker-data-200.txt", os.path.join(PARENT_DIR, "inputs"))
-    test_stream = (
-        TestStream(coder=coders.StrUtf8Coder())
-        .with_output_types(str)
-        .add_elements(records)
-        .advance_watermark_to_infinity()
-    )
-
     p = beam.Pipeline(options=options)
     (
         p
-        | "Read stream" >> test_stream
-        | "To positions" >> beam.Map(to_positions)
-        | "Add timestamp" >> beam.ParDo(AddTimestampDoFn())
-        | "Windowing"
-        >> beam.WindowInto(
-            GlobalWindows(),
-            trigger=Repeatedly(AfterProcessingTime(10)),
-            timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
-            accumulation_mode=AccumulationMode.ACCUMULATING,
-            allowed_lateness=Duration.of(seconds=60 * 60),
+        | "Read file"
+        >> beam.Create(
+            read_file("test-tracker-data-200.txt", os.path.join(PARENT_DIR, "inputs"))
         )
+        | "To positions" >> beam.Map(to_positions)
         | "Group by workout" >> beam.GroupByKey()
-        # | beam.Map(print)
+        | "Compute metrics" >> beam.Map(lambda e: compute_matrics(*e))
+        | beam.Map(print)
     )
 
     logging.getLogger().setLevel(logging.INFO)

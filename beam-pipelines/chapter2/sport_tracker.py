@@ -5,11 +5,20 @@ import json
 import re
 import logging
 import typing
+import math
 
 import apache_beam as beam
 from apache_beam.io import kafka
-from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
-from apache_beam.transforms.trigger import AfterCount, AccumulationMode, AfterWatermark
+from apache_beam.transforms.window import (
+    GlobalWindows,
+    TimestampCombiner,
+    TimestampedValue,
+)
+from apache_beam.transforms.trigger import (
+    Repeatedly,
+    AccumulationMode,
+    AfterProcessingTime,
+)
 from apache_beam.transforms.util import Reify
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
@@ -35,14 +44,45 @@ def decode_message(kafka_kv: tuple):
     return kafka_kv[1].decode("utf-8")
 
 
-def tokenize(element: str):
-    return re.findall(r"[A-Za-z\']+", element)
-
-
 def create_message(element: typing.Tuple[datetime.datetime, str]):
     msg = json.dumps({"created_at": element[0].isoformat(), "word": element[1]})
     print(msg)
     return "".encode("utf-8"), msg.encode("utf-8")
+
+
+def to_positions(input: str):
+    workout, latitude, longitude, timestamp = tuple(re.sub("\n", "", input).split("\t"))
+    return workout, Position(
+        latitude=float(latitude), longitude=float(longitude), timestamp=int(timestamp)
+    )
+
+
+def distance(first: Position, second: Position):
+    EARTH_DIAMETER = 6_371_000
+    delta_latitude = (first.latitude - second.latitude) * math.pi / 180
+    delta_longitude = (first.longitude - second.longitude) * math.pi / 180
+    latitude_inc_in_meters = math.sqrt(2 * (1 - math.cos(delta_latitude)))
+    longitude_inc_in_meters = math.sqrt(2 * (1 - math.cos(delta_longitude)))
+    return EARTH_DIAMETER * math.sqrt(
+        latitude_inc_in_meters * latitude_inc_in_meters
+        + longitude_inc_in_meters * longitude_inc_in_meters
+    )
+
+
+def compute_matrics(key: str, positions: typing.List[Position]):
+    last: Position = None
+    total_time = 0
+    total_distance = 0
+    for p in sorted(positions, key=lambda p: p.timestamp):
+        if last is not None:
+            total_distance += distance(last, p)
+            total_time += p.timestamp - last.timestamp
+        last = p
+    return key, total_time, total_distance
+
+
+def assign_timestamp(element: typing.Tuple[str, Position]):
+    return TimestampedValue(element, element[1].timestamp)
 
 
 class AddTS(beam.DoFn):
@@ -100,21 +140,21 @@ def run():
                 "group.id": opts.job_name,
             },
             topics=[opts.input],
+            timestamp_policy=kafka.ReadFromKafka.create_time_policy,
         )
         | "Decode messages" >> beam.Map(decode_message)
+        | "To positions" >> beam.Map(to_positions)
+        | "With timestamps" >> beam.Map(assign_timestamp)
         | "Windowing"
         >> beam.WindowInto(
             GlobalWindows(),
-            trigger=AfterWatermark(early=AfterCount(1)),
-            allowed_lateness=0,
+            trigger=Repeatedly(AfterProcessingTime(10)),
+            allowed_lateness=60 * 60,
             timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
             accumulation_mode=AccumulationMode.ACCUMULATING,
         )
-        | "Extract words" >> beam.FlatMap(tokenize)
-        | "Get longest word" >> beam.combiners.Top.Of(1, key=len).without_defaults()
-        | "Flatten" >> beam.FlatMap(lambda e: e)
-        | "Reify" >> Reify.Timestamp()
-        | "Add timestamp" >> beam.ParDo(AddTS())
+        | "Group by workout" >> beam.GroupByKey()
+        | "Compute metrics" >> beam.Map(lambda e: compute_matrics(*e))
         | "Create messages"
         >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
         | "Write to Kafka"
