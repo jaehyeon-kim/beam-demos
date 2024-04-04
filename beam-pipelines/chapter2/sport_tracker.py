@@ -1,6 +1,5 @@
 import os
 import argparse
-import datetime
 import json
 import re
 import logging
@@ -15,11 +14,10 @@ from apache_beam.transforms.window import (
     TimestampedValue,
 )
 from apache_beam.transforms.trigger import (
-    Repeatedly,
+    AfterWatermark,
     AccumulationMode,
     AfterProcessingTime,
 )
-from apache_beam.transforms.util import Reify
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
@@ -44,8 +42,8 @@ def decode_message(kafka_kv: tuple):
     return kafka_kv[1].decode("utf-8")
 
 
-def create_message(element: typing.Tuple[datetime.datetime, str]):
-    msg = json.dumps({"created_at": element[0].isoformat(), "word": element[1]})
+def create_message(element: typing.Tuple[str, int, float]):
+    msg = json.dumps(dict(zip(["user", "total_time", "total_distance"], element)))
     print(msg)
     return "".encode("utf-8"), msg.encode("utf-8")
 
@@ -57,7 +55,7 @@ def to_positions(input: str):
     )
 
 
-def distance(first: Position, second: Position):
+def get_distance(first: Position, second: Position):
     EARTH_DIAMETER = 6_371_000
     delta_latitude = (first.latitude - second.latitude) * math.pi / 180
     delta_longitude = (first.longitude - second.longitude) * math.pi / 180
@@ -75,7 +73,7 @@ def compute_matrics(key: str, positions: typing.List[Position]):
     total_distance = 0
     for p in sorted(positions, key=lambda p: p.timestamp):
         if last is not None:
-            total_distance += distance(last, p)
+            total_distance += get_distance(last, p)
             total_time += p.timestamp - last.timestamp
         last = p
     return key, total_time, total_distance
@@ -83,11 +81,6 @@ def compute_matrics(key: str, positions: typing.List[Position]):
 
 def assign_timestamp(element: typing.Tuple[str, Position]):
     return TimestampedValue(element, element[1].timestamp)
-
-
-class AddTS(beam.DoFn):
-    def process(self, word: str, ts_param=beam.DoFn.TimestampParam):
-        yield ts_param.to_utc_datetime(), word
 
 
 def run():
@@ -148,8 +141,8 @@ def run():
         | "Windowing"
         >> beam.WindowInto(
             GlobalWindows(),
-            trigger=Repeatedly(AfterProcessingTime(10)),
-            allowed_lateness=60 * 60,
+            trigger=AfterWatermark(early=AfterProcessingTime(3)),
+            allowed_lateness=0,  # impossible to allow late date using default timestamp policies
             timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
             accumulation_mode=AccumulationMode.ACCUMULATING,
         )
