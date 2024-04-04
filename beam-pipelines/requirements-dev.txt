@@ -5,5 +5,3 @@ jupyterlab-code-formatter
 black
 isort
 ipdb
-faker
-geocoder
