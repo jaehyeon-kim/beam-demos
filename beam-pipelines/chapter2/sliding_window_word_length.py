@@ -1,15 +1,24 @@
 import os
 import datetime
-import argparse
 import json
+import argparse
 import re
-import typing
 import logging
+import typing
 
 import apache_beam as beam
 from apache_beam.io import kafka
+from apache_beam.transforms.window import SlidingWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
+
+
+class AverageAccumulator(typing.NamedTuple):
+    length: int
+    count: int
+
+
+beam.coders.registry.register_coder(AverageAccumulator, beam.coders.RowCoder)
 
 
 def decode_message(kafka_kv: tuple):
@@ -42,6 +51,26 @@ class AddWindowTS(beam.DoFn):
         )
 
 
+class AverageFn(beam.CombineFn):
+    def create_accumulator(self):
+        return AverageAccumulator(length=0, count=0)
+
+    def add_input(self, mutable_accumulator: AverageAccumulator, element: str):
+        length, count = tuple(mutable_accumulator)
+        return AverageAccumulator(length=length + len(element), count=count + 1)
+
+    def merge_accumulators(self, accumulators: typing.List[AverageAccumulator]):
+        lengths, counts = zip(*accumulators)
+        return AverageAccumulator(length=sum(lengths), count=sum(counts))
+
+    def extract_output(self, accumulator: AverageAccumulator):
+        length, count = tuple(accumulator)
+        return length / count if count else float("NaN")
+
+    def get_accumulator_coder(self):
+        return beam.coders.registry.get_coder(AverageAccumulator)
+
+
 def run():
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
     parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
@@ -50,13 +79,16 @@ def run():
         action="store_true",
         default="Flag to indicate whether to use an own local cluster",
     )
-    parser.add_argument("--length", default="5", type=int, help="Window length")
-    parser.add_argument("--top", default="3", type=int, help="Top k")
+    parser.add_argument("--size", type=int, default=10, help="Window size")
+    parser.add_argument("--period", type=int, default=2, help="Window period")
     parser.add_argument("--input", default="text-input", help="Input topic")
     parser.add_argument(
         "--job_name",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
         help="Job name",
+    )
+    parser.add_argument(
+        "--savepoint_path", default=None, help="Flink job save point path"
     )
     opts = parser.parse_args()
     print(opts)
@@ -74,6 +106,8 @@ def run():
     }
     if opts.use_own is True:
         pipeline_opts = {**pipeline_opts, **{"flink_master": "localhost:8081"}}
+    if opts.savepoint_path is not None:
+        pipeline_opts = {**pipeline_opts, **{"savepoint_path": opts.savepoint_path}}
     print(pipeline_opts)
     options = PipelineOptions([], **pipeline_opts)
     # Required, else it will complain that when importing worker functions
@@ -96,12 +130,12 @@ def run():
             topics=[opts.input],
         )
         | "Decode messages" >> beam.Map(decode_message)
-        | "Windowing" >> beam.WindowInto(beam.window.FixedWindows(opts.length))
+        | "Windowing"
+        >> beam.WindowInto(
+            SlidingWindows(size=opts.size, period=opts.period),
+        )
         | "Extract words" >> beam.FlatMap(tokenize)
-        | "Count per word" >> beam.combiners.Count.PerElement()
-        | "Top k words"
-        >> beam.combiners.Top.Of(opts.top, lambda e: e[1]).without_defaults()
-        | "Flatten" >> beam.FlatMap(lambda e: e)
+        | "Get avg word length" >> beam.CombineGlobally(AverageFn()).without_defaults()
         | "Add window timestamp" >> beam.ParDo(AddWindowTS())
         | "Create messages"
         >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
@@ -117,7 +151,7 @@ def run():
         )
     )
 
-    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger().setLevel(logging.WARN)
     logging.info("Building pipeline ...")
 
     p.run().wait_until_finish()

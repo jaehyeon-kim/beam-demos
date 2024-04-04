@@ -1,13 +1,16 @@
 import os
-import datetime
 import argparse
+import datetime
 import json
 import re
-import typing
 import logging
+import typing
 
 import apache_beam as beam
 from apache_beam.io import kafka
+from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
+from apache_beam.transforms.trigger import AfterCount, AccumulationMode, AfterWatermark
+from apache_beam.transforms.util import Reify
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
@@ -21,25 +24,15 @@ def tokenize(element: str):
     return re.findall(r"[A-Za-z\']+", element)
 
 
-def create_message(element: typing.Tuple[datetime.datetime, datetime.datetime, float]):
-    msg = json.dumps(
-        {
-            "window_start": element[0].isoformat(timespec="seconds"),
-            "window_end": element[1].isoformat(timespec="seconds"),
-            "avg_len": element[2],
-        }
-    )
+def create_message(element: typing.Tuple[datetime.datetime, str]):
+    msg = json.dumps({"created_at": element[0].isoformat(), "word": element[1]})
     print(msg)
     return "".encode("utf-8"), msg.encode("utf-8")
 
 
-class AddWindowTS(beam.DoFn):
-    def process(self, avg_len: float, win_param=beam.DoFn.WindowParam):
-        yield (
-            win_param.start.to_utc_datetime(),
-            win_param.end.to_utc_datetime(),
-            avg_len,
-        )
+class AddTS(beam.DoFn):
+    def process(self, word: str, ts_param=beam.DoFn.TimestampParam):
+        yield ts_param.to_utc_datetime(), word
 
 
 def run():
@@ -50,8 +43,6 @@ def run():
         action="store_true",
         default="Flag to indicate whether to use an own local cluster",
     )
-    parser.add_argument("--length", default="5", type=int, help="Window length")
-    parser.add_argument("--top", default="3", type=int, help="Top k")
     parser.add_argument("--input", default="text-input", help="Input topic")
     parser.add_argument(
         "--job_name",
@@ -96,13 +87,19 @@ def run():
             topics=[opts.input],
         )
         | "Decode messages" >> beam.Map(decode_message)
-        | "Windowing" >> beam.WindowInto(beam.window.FixedWindows(opts.length))
+        | "Windowing"
+        >> beam.WindowInto(
+            GlobalWindows(),
+            trigger=AfterWatermark(early=AfterCount(1)),
+            allowed_lateness=0,
+            timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
+            accumulation_mode=AccumulationMode.ACCUMULATING,
+        )
         | "Extract words" >> beam.FlatMap(tokenize)
-        | "Count per word" >> beam.combiners.Count.PerElement()
-        | "Top k words"
-        >> beam.combiners.Top.Of(opts.top, lambda e: e[1]).without_defaults()
+        | "Get longest word" >> beam.combiners.Top.Of(1, key=len).without_defaults()
         | "Flatten" >> beam.FlatMap(lambda e: e)
-        | "Add window timestamp" >> beam.ParDo(AddWindowTS())
+        | "Reify" >> Reify.Timestamp()
+        | "Add timestamp" >> beam.ParDo(AddTS())
         | "Create messages"
         >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
         | "Write to Kafka"
@@ -117,7 +114,7 @@ def run():
         )
     )
 
-    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger().setLevel(logging.WARN)
     logging.info("Building pipeline ...")
 
     p.run().wait_until_finish()
