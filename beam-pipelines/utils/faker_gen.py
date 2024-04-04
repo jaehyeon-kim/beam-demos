@@ -2,10 +2,10 @@ import time
 import argparse
 
 from faker import Faker
-from text_gen import TextProducer
+from producer import TextProducer
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(__file__, description="Text Data Generator")
+    parser = argparse.ArgumentParser(__file__, description="Fake Text Data Generator")
     parser.add_argument(
         "--bootstrap_servers",
         "-b",

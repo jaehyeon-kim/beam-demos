@@ -1,9 +1,11 @@
 import argparse
 
-from text_gen import TextProducer
+from producer import TextProducer
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(__file__, description="Text Data Generator")
+    parser = argparse.ArgumentParser(
+        __file__, description="Interactive Text Data Generator"
+    )
     parser.add_argument(
         "--bootstrap_servers",
         "-b",
