@@ -28,13 +28,7 @@ class Position(typing.NamedTuple):
     timestamp: int
 
 
-class Metric(typing.NamedTuple):
-    length: float
-    duration: int
-
-
 beam.coders.registry.register_coder(Position, beam.coders.RowCoder)
-beam.coders.registry.register_coder(Metric, beam.coders.RowCoder)
 
 
 def decode_message(kafka_kv: tuple):
@@ -142,7 +136,9 @@ def run():
         >> beam.WindowInto(
             GlobalWindows(),
             trigger=AfterWatermark(early=AfterProcessingTime(3)),
-            allowed_lateness=0,  # impossible to allow late date using default timestamp policies
+            # impossible to allow late date using default timestamp policies
+            # unless manually specifying timestamp by producer
+            allowed_lateness=0,
             timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
             accumulation_mode=AccumulationMode.ACCUMULATING,
         )
