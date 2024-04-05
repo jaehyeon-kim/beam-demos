@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package chapter3;
+
+message Request {
+  string input = 1;
+}
+
+message Response {
+  int32 output = 1;
+}
+
+message RequestList {
+  repeated Request request = 1;
+}
+
+message ResponseList {
+  repeated Response response = 1;
+}
+
+service RcpService {
+  rpc resolve(Request) returns (Response);
+  rpc resolveBatch(RequestList) returns (ResponseList);
+}
