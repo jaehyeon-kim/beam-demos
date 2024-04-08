@@ -15,7 +15,7 @@ services:
       PYTHONUNBUFFERED: "1"
       INSECURE_PORT: 0.0.0.0:50051
     volumes:
-      - ../chapter3/grpc:/app
+      - ../chapter3:/app
 
 networks:
   appnet:
