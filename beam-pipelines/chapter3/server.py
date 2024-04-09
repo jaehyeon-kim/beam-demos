@@ -8,14 +8,13 @@ import service_pb2_grpc
 
 class RcpServiceServicer(service_pb2_grpc.RcpServiceServicer):
     def resolve(self, request, context):
-        print("resolve Request Made:")
-        print(request)
+        print(f"resolve Request Made: input - {request.input}")
         response = service_pb2.Response(output=len(request.input))
         return response
 
     def resolveBatch(self, request, context):
         print("resolveBatch Request Made:")
-        print(request)
+        print(f"\tInputs - {', '.join([r.input for r in request.request])}")
         response = service_pb2.ResponseList()
         response.response.extend(
             [service_pb2.Response(output=len(r.input)) for r in request.request]
