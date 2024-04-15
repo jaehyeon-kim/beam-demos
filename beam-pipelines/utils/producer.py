@@ -16,12 +16,15 @@ class TextProducer:
             value_serializer=lambda v: v.encode("utf-8"),
         )
 
-    def send_to_kafka(self, text: str):
+    def send_to_kafka(self, text: str, timestamp_ms: int = None):
         """
         Sends text to a Kafka topic.
         """
         try:
-            self.kafka_producer.send(self.topic_name, value=text)
+            args = {"topic": self.topic_name, "value": text}
+            if timestamp_ms is not None:
+                args = {**args, **{"timestamp_ms": timestamp_ms}}
+            self.kafka_producer.send(**args)
             self.kafka_producer.flush()
         except Exception as e:
             raise RuntimeError("fails to send a message") from e
