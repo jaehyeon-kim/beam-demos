@@ -38,7 +38,7 @@ def main(out=sys.stderr, verbosity=2):
     unittest.TextTestRunner(out, verbosity=verbosity).run(suite)
 
 
-class RcpParDooTest(unittest.TestCase):
+class RcpParDooStatefulTest(unittest.TestCase):
     server_class = server.RcpServiceServicer
     port = 50051
 
