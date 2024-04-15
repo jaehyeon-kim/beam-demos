@@ -1,0 +1,22 @@
+version: "3.5"
+
+services:
+  grpc-server:
+    build:
+      context: .
+    image: grpc-server
+    container_name: grpc-server
+    command: ["python", "/app/server.py"]
+    ports:
+      - 50051:50051
+    networks:
+      - appnet
+    environment:
+      PYTHONUNBUFFERED: "1"
+      INSECURE_PORT: 0.0.0.0:50051
+    volumes:
+      - ../chapter3:/app
+
+networks:
+  appnet:
+    name: grpc-network

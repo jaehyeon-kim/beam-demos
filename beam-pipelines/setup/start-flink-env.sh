@@ -4,6 +4,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         -k|--kafka) start_kafka=true;;
         -f|--flink) start_flink=true;;
+        -g|--grpc) start_grpc=true;;
         -a|--all) start_all=true;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
@@ -13,14 +14,19 @@ done
 if [ ! -z $start_all ] &&  [ $start_all = true ]; then
   start_kafka=true
   start_flink=true
+  start_grpc=true
 fi
-# echo "start_all? ${start_all} start kakfa? ${start_kafka} start flink? ${start_flink}"
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 #### start kafka cluster in docker
 if [ ! -z $start_kafka ] &&  [ $start_kafka = true ]; then
   docker-compose -f ${SCRIPT_DIR}/docker-compose.yml up -d
+fi
+
+#### start grpc server in docker
+if [ ! -z $start_grpc ] &&  [ $start_grpc = true ]; then
+  docker-compose -f ${SCRIPT_DIR}/docker-compose-grpc.yml up -d
 fi
 
 #### start local flink cluster
