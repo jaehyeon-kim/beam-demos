@@ -87,7 +87,7 @@ Implement tasks in [Building Big Data Pipelines with Apache Beam](https://www.pa
 - ✔️ Task 17 – Implementing MaxWordLength in the Python SDK ⬅️ Task 2
 - ✔️ Task 18 – Implementing SportTracker in the Python SDK ⬅️ Task 5
 - ✔️ Task 19 – Implementing RPCParDo in the Python SDK ⬅️ Task 8
-- ✔️ Task 20 – Implementing SportTrackerMotivation in the Python SDK ⬅️ Task 11
+- ✔️ Task 20 – Implementing SportTrackerMotivation in the Python SDK ⬅️ Task 12
 
 #### Chapter 7
 
