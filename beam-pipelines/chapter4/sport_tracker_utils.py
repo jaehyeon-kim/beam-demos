@@ -92,46 +92,28 @@ class ToMetricFn(beam.DoFn):
         flush_timer=beam.DoFn.TimerParam(FLUSH_TIMER),
     ):
         min_ts: Timestamp = min_timestamp.read()
-        if self.verbose:
-            msg = f"{element[0]}, min_ts is {min_ts}"
-            if min_ts is None:
-                msg = f"{msg}, flush timer is set at {timestamp}"
-            print(msg)
         if min_ts is None:
             min_timestamp.write(timestamp)
             flush_timer.set(timestamp)
         buffer.add(element[1])
+        if self.verbose and element[0] == "user0":
+            print(f">>>>ToMetricFn.process<<<< key {element[0]} ts {element[1].timestamp}")
 
     @on_timer(FLUSH_TIMER)
     def flush(
         self,
         key=beam.DoFn.KeyParam,
-        timestamp=beam.DoFn.TimestampParam,
         buffer=beam.DoFn.StateParam(BUFFER),
         min_timestamp=beam.DoFn.StateParam(MIN_TIMESTAMP),
-        flush_timer=beam.DoFn.TimerParam(FLUSH_TIMER),
     ):
-        keep: typing.List[Position] = []
-        flush: typing.List[Position] = []
         items: typing.List[Position] = []
-        min_keep_ts: Timestamp = None
         for item in buffer.read():
-            if item.timestamp < timestamp:
-                flush.append(item)
-            else:
-                keep.append(item)
+            items.append(item)
+            if self.verbose and key == "user0":
+                print(f">>>>ToMetricFn.flush  <<<< key {key} ts {item.timestamp}")              
 
-        outputs = []
-        if len(items) > 0:
-            items = list(sorted(items, key=lambda p: p.timestamp))
-            outputs = list(self.flush_metrics(items, key))
-            if self.verbose:
-                print("========")
-                for output in outputs:
-                    print(
-                        f"key {key} value {output.value}, ts {output.timestamp}, flush ts {timestamp}"
-                    )
-                print("========")
+        items = list(sorted(items, key=lambda p: p.timestamp))
+        outputs = list(self.flush_metrics(items, key))
 
         buffer.clear()
         buffer.add(items[-1])
@@ -172,7 +154,6 @@ class MeanPaceCombineFn(beam.CombineFn):
         return Metric(0, 0)
 
     def add_input(self, mutable_accumulator: Metric, element: Metric):
-        print(element)
         return Metric(*tuple(map(sum, zip(mutable_accumulator, element))))
 
     def merge_accumulators(self, accumulators: typing.List[Metric]):

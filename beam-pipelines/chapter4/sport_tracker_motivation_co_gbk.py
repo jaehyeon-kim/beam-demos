@@ -25,7 +25,7 @@ class SportTrackerMotivation(beam.PTransform):
         self,
         short_duration: int,
         long_duration: int,
-        verbose: bool = True,
+        verbose: bool = False,
         label: str | None = None,
     ):
         super().__init__(label)
@@ -62,31 +62,29 @@ class SportTrackerMotivation(beam.PTransform):
             element: typing.Tuple[typing.Tuple[str, Metric], Timestamp, BoundedWindow],
         ) -> typing.Tuple[str, Metric]:
             value, timestamp, window = element
-            print(f"{str(window)} {timestamp} {value}")
+            if self.verbose:
+                print(f">>>>SportTrackerMotivation.to_kv<<<<{str(window)} {timestamp} {value}")
             return value
 
         boxed = pcoll | "ComputeMetrics" >> ComputeBoxedMetrics(verbose=self.verbose)
-        # short_average = (
-        #     boxed
-        #     | "ShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
-        #     # | Reify.Window()
-        #     # | beam.Map(to_kv)
-        #     | "ShortAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
-        # )
-        # long_average = (
-        #     boxed
-        #     | "LongWindow"
-        #     >> beam.WindowInto(SlidingWindows(self.long_duration, self.short_duration))
-        #     # | Reify.Window()
-        #     # | beam.Map(to_kv)
-        #     | "LongAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
-        #     | "MatchToShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
-        # )
-        # return (
-        #     (short_average, long_average) | beam.CoGroupByKey()
-        #     # | beam.FlatMap(as_motivations)
-        # )
-        return boxed
+        short_average = (
+            boxed
+            | "ShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
+            # | Reify.Window() | beam.Map(to_kv)
+            | "ShortAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
+        )
+        long_average = (
+            boxed
+            | "LongWindow"
+            >> beam.WindowInto(SlidingWindows(self.long_duration, self.short_duration))
+            # | Reify.Window() | beam.Map(to_kv)
+            | "LongAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
+            | "MatchToShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
+        )
+        return (
+            (short_average, long_average) | beam.CoGroupByKey()
+            # | beam.FlatMap(as_motivations)
+        )
 
 
 def run():
@@ -131,13 +129,13 @@ def run():
         >> ReadPositionsFromKafka(
             bootstrap_servers=os.getenv(
                 "BOOTSTRAP_SERVERS",
-                "host.docker.internal:29092",
+                ":29092",
             ),
             topics=[opts.input],
             group_id=opts.job_name,
         )
         | "SportsTrackerMotivation"
-        >> SportTrackerMotivation(short_duration=60, long_duration=300)
+        >> SportTrackerMotivation(short_duration=20, long_duration=120, verbose=False)
         | beam.Map(print)
     )
 
