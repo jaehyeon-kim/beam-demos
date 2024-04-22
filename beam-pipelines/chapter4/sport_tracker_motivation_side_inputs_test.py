@@ -11,7 +11,7 @@ from apache_beam.utils.timestamp import Timestamp
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
 from sport_tracker_utils import Position
-from sport_tracker_motivation_co_gbk import SportTrackerMotivation
+from sport_tracker_motivation_side_inputs import SportTrackerMotivation
 
 
 def move(start: Position, delta: int, duration: float):
