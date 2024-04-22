@@ -8,7 +8,7 @@ import apache_beam as beam
 from apache_beam.io import kafka
 from apache_beam import pvalue
 from apache_beam.transforms.util import Reify
-from apache_beam.transforms.window import GlobalWindows, TimestampedValue
+from apache_beam.transforms.window import GlobalWindows, TimestampedValue, BoundedWindow
 from apache_beam.transforms.timeutil import TimeDomain
 from apache_beam.transforms.userstate import (
     ReadModifyWriteStateSpec,
@@ -60,19 +60,19 @@ class Metric(typing.NamedTuple):
         return cls(**d)
 
 
-# class MetricCoder(beam.coders.Coder):
-#     def encode(self, value: Metric):
-#         return value.to_bytes()
+class MetricCoder(beam.coders.Coder):
+    def encode(self, value: Metric):
+        return value.to_bytes()
 
-#     def decode(self, encoded: bytes):
-#         return Metric.from_bytes(encoded)
+    def decode(self, encoded: bytes):
+        return Metric.from_bytes(encoded)
 
-#     def is_deterministic(self) -> bool:
-#         return True
+    def is_deterministic(self) -> bool:
+        return True
 
 
 beam.coders.registry.register_coder(Position, PositionCoder)
-# beam.coders.registry.register_coder(Metric, MetricCoder)
+beam.coders.registry.register_coder(Metric, MetricCoder)
 
 
 class ToMetricFn(beam.DoFn):
@@ -166,6 +166,9 @@ class MeanPaceCombineFn(beam.CombineFn):
             return float("NaN")
         return accumulator.distance / (accumulator.duration)
 
+    def get_accumulator_coder(self):
+        return beam.coders.registry.get_coder(Metric)
+
 
 @beam.typehints.with_output_types(typing.Tuple[str, Position])
 class ReadPositionsFromKafka(beam.PTransform):
@@ -198,7 +201,8 @@ class ReadPositionsFromKafka(beam.PTransform):
 
         return (
             input
-            | kafka.ReadFromKafka(
+            | "ReadFromKafka"
+            >> kafka.ReadFromKafka(
                 consumer_config={
                     "bootstrap.servers": self.boostrap_servers,
                     "auto.offset.reset": "earliest",
@@ -207,12 +211,79 @@ class ReadPositionsFromKafka(beam.PTransform):
                 },
                 topics=self.topics,
             )
-            | beam.Map(decode_message)
-            | beam.Map(to_positions)
-            | beam.Map(add_timestamp)
+            | "DecodeMsg" >> beam.Map(decode_message)
+            | "ToPositions" >> beam.Map(to_positions)
+            | "AddTS" >> beam.Map(add_timestamp)
         )
 
 
 class WriteNotificationsToKafka(beam.PTransform):
-    def expand(self, ouput: pvalue.PCollection):
-        return super().expand(ouput)
+    def __init__(
+        self,
+        bootstrap_servers: str,
+        topic: str,
+        verbose: bool = False,
+        label: str | None = None,
+    ):
+        super().__init__(label)
+        self.boostrap_servers = bootstrap_servers
+        self.topic = topic
+        self.verbose = verbose
+
+    def expand(self, pcoll: pvalue.PCollection):
+        def create_message(element: tuple):
+            msg = json.dumps({"track": element[0], "notification": element[1]})
+            if self.verbose:
+                print(msg)
+            return element[0].encode("utf-8"), msg.encode("utf-8")
+
+        return (
+            pcoll
+            | "CreateMsg"
+            >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
+            | "Write to Kafka"
+            >> kafka.WriteToKafka(
+                producer_config={"bootstrap.servers": self.boostrap_servers},
+                topic=self.topic,
+            )
+        )
+
+
+class ElemToKV(beam.PTransform):
+    def __init__(self, indicator: str, verbose: bool, label: str | None = None):
+        super().__init__(label)
+        self.indicator = indicator
+        self.verbose = verbose
+
+    def expand(self, pcoll: pvalue.PCollection):
+        def elem_to_kv(
+            element: typing.Tuple[typing.Tuple[str, Metric], Timestamp, BoundedWindow],
+        ) -> typing.Tuple[str, Metric]:
+            value, timestamp, window = element
+            if self.verbose and value[0] == "user0":
+                print(
+                    f">>>>ElemToKV.{self.indicator}<<<<{str(window)} {timestamp} {value}"
+                )
+            return value
+
+        return pcoll | Reify.Window() | beam.Map(elem_to_kv)
+
+
+class MetricToKV(beam.PTransform):
+    def __init__(self, indicator: str, verbose: bool, label: str | None = None):
+        super().__init__(label)
+        self.indicator = indicator
+        self.verbose = verbose
+
+    def expand(self, pcoll: pvalue.PCollection):
+        def metric_to_kv(
+            element,  #: typing.Tuple[typing.Tuple[str, float], Timestamp, BoundedWindow],
+        ) -> typing.Tuple[str, float]:
+            value, timestamp, window = element
+            if self.verbose and value[0] == "user1":
+                print(
+                    f">>>>MetricToKV.{self.indicator}<<<<{str(window)} {timestamp} {value}"
+                )
+            return value
+
+        return pcoll | Reify.Window() | beam.Map(metric_to_kv)

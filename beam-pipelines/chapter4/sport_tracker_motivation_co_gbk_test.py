@@ -10,7 +10,6 @@ import apache_beam as beam
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that, equal_to
 from apache_beam.testing.test_stream import TestStream
-from apache_beam.transforms.window import TimestampedValue
 from apache_beam.utils.timestamp import Timestamp
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
@@ -31,42 +30,42 @@ def main(out=sys.stderr, verbosity=2):
 
 
 class SportTrackerMotivationTest(unittest.TestCase):
-    # def test_pipeline_bounded(self):
-    #     options = PipelineOptions()
-    #     with TestPipeline(options=options) as p:
-    #         # now = time.time()
-    #         now = 0
-    #         user0s = [
-    #             ("user0", Position.create(spot=0, timestamp=now)),
-    #             ("user0", Position.create(spot=25, timestamp=now + 20)),
-    #             ("user0", Position.create(spot=22, timestamp=now + 40)),
-    #         ]
-    #         user1s = [
-    #             ("user1", Position.create(spot=0, timestamp=now)),
-    #             ("user1", Position.create(spot=-20, timestamp=now + 20)),
-    #             ("user1", Position.create(spot=80, timestamp=now + 40)),
-    #         ]
-    #         inputs = chain(*zip(user0s, user1s))
+    def test_pipeline_bounded(self):
+        options = PipelineOptions()
+        with TestPipeline(options=options) as p:
+            # now = time.time()
+            now = 0
+            user0s = [
+                ("user0", Position.create(spot=0, timestamp=now + 30)),
+                ("user0", Position.create(spot=25, timestamp=now + 60)),
+                ("user0", Position.create(spot=22, timestamp=now + 75)),
+            ]
+            user1s = [
+                ("user1", Position.create(spot=0, timestamp=now + 30)),
+                ("user1", Position.create(spot=-20, timestamp=now + 60)),
+                ("user1", Position.create(spot=80, timestamp=now + 75)),
+            ]
+            inputs = chain(*zip(user0s, user1s))
 
-    #         test_stream = TestStream()
-    #         for input in inputs:
-    #             test_stream.add_elements([input], event_timestamp=input[1].timestamp)
-    #         test_stream.advance_watermark_to_infinity()
+            test_stream = TestStream()
+            for input in inputs:
+                test_stream.add_elements([input], event_timestamp=input[1].timestamp)
+            test_stream.advance_watermark_to_infinity()
 
-    #         output = (
-    #             p
-    #             | test_stream.with_output_types(typing.Tuple[str, Position])
-    #             | SportTrackerMotivation(short_duration=20, long_duration=100)
-    #         )
+            output = (
+                p
+                | test_stream.with_output_types(typing.Tuple[str, Position])
+                | SportTrackerMotivation(short_duration=20, long_duration=100)
+            )
 
-    #         EXPECTED_OUTPUT = [
-    #             ("user0", "pacing"),
-    #             ("user1", "pacing"),
-    #             ("user0", "underperforming"),
-    #             ("user1", "outperforming"),
-    #         ]
+            EXPECTED_OUTPUT = [
+                ("user0", "pacing"),
+                ("user1", "pacing"),
+                ("user0", "underperforming"),
+                ("user1", "outperforming"),
+            ]
 
-    #         assert_that(output, equal_to(EXPECTED_OUTPUT))
+            assert_that(output, equal_to(EXPECTED_OUTPUT))
 
     def test_pipeline_unbounded(self):
         options = PipelineOptions()
@@ -75,21 +74,21 @@ class SportTrackerMotivationTest(unittest.TestCase):
             # now = time.time()
             now = 0
             user0s = [
-                ("user0", Position.create(spot=0, timestamp=now)),
-                ("user0", Position.create(spot=25, timestamp=now + 23)),
-                ("user0", Position.create(spot=22, timestamp=now + 39)),
+                ("user0", Position.create(spot=0, timestamp=now + 30)),
+                ("user0", Position.create(spot=25, timestamp=now + 60)),
+                ("user0", Position.create(spot=22, timestamp=now + 75)),
             ]
             user1s = [
-                ("user1", Position.create(spot=0, timestamp=now)),
-                ("user1", Position.create(spot=-20, timestamp=now + 25)),
-                ("user1", Position.create(spot=80, timestamp=now + 39)),
+                ("user1", Position.create(spot=0, timestamp=now + 30)),
+                ("user1", Position.create(spot=-20, timestamp=now + 60)),
+                ("user1", Position.create(spot=80, timestamp=now + 75)),
             ]
             inputs = chain(*zip(user0s, user1s))
-            watermarks = [now + 10, now + 17, now + 20, now + 22, now + 39, now + 40]
+            watermarks = [now + 5, now + 10, now + 15, now + 20, now + 29, now + 30]
 
             test_stream = TestStream()
             test_stream.advance_watermark_to(Timestamp.of(now))
-            for ind, input in enumerate(inputs):
+            for input in inputs:
                 test_stream.add_elements([input], event_timestamp=input[1].timestamp)
                 if watermarks:
                     test_stream.advance_watermark_to(Timestamp.of(watermarks.pop(0)))
@@ -99,17 +98,16 @@ class SportTrackerMotivationTest(unittest.TestCase):
                 p
                 | test_stream.with_output_types(typing.Tuple[str, Position])
                 | SportTrackerMotivation(short_duration=30, long_duration=90)
-                # | beam.Map(print)
             )
 
-            # EXPECTED_OUTPUT = [
-            #     ("user0", "pacing"),
-            #     ("user1", "pacing"),
-            #     ("user0", "underperforming"),
-            #     ("user1", "outperforming"),
-            # ]
+            EXPECTED_OUTPUT = [
+                ("user0", "pacing"),
+                ("user1", "pacing"),
+                ("user0", "underperforming"),
+                ("user1", "outperforming"),
+            ]
 
-            # assert_that(output, equal_to(EXPECTED_OUTPUT))
+            assert_that(output, equal_to(EXPECTED_OUTPUT))
 
 
 if __name__ == "__main__":

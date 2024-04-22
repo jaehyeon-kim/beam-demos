@@ -6,17 +6,17 @@ import logging
 
 import apache_beam as beam
 from apache_beam import pvalue
-from apache_beam.transforms.util import Reify
-from apache_beam.utils.timestamp import Timestamp
-from apache_beam.transforms.window import FixedWindows, SlidingWindows, BoundedWindow
+from apache_beam.transforms.window import FixedWindows, SlidingWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
 from sport_tracker_utils import (
     ReadPositionsFromKafka,
+    WriteNotificationsToKafka,
     ComputeBoxedMetrics,
     MeanPaceCombineFn,
-    Metric,
+    ElemToKV,
+    MetricToKV,
 )
 
 
@@ -60,50 +60,34 @@ class SportTrackerMotivation(beam.PTransform):
                 return []
             return [(element[0], status)]
 
-        def elem_to_kv(
-            element: typing.Tuple[typing.Tuple[str, Metric], Timestamp, BoundedWindow],
-        ) -> typing.Tuple[str, Metric]:
-            value, timestamp, window = element
-            if True and value[0] == "user0":
-                print(
-                    f">>>>SportTrackerMotivation.elem_to_kv<<<<{str(window)} {timestamp} {value}"
-                )
-            return value
-
-        def metric_to_kv(
-            element,
-        ) -> typing.Tuple[str, float]:
-            value, timestamp, window = element
-            if True and value[0] == "user0":
-                print(
-                    f">>>>SportTrackerMotivation.metric_to_kv<<<<{str(window)} {timestamp} {value}"
-                )
-            return value
-
         boxed = pcoll | "ComputeMetrics" >> ComputeBoxedMetrics(verbose=self.verbose)
         short_average = (
             boxed
             | "ShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
-            | "ShortReify" >> Reify.Window()
-            | "ShortElemKV" >> beam.Map(elem_to_kv)
+            # | "ShortElemToKV" >> ElemToKV(indicator="short", verbose=self.verbose)
             | "ShortAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
+            # | "SortMericToKV"
+            # >> MetricToKV(indicator="short", verbose=self.verbose).with_input_types(
+            #     typing.Tuple[str, float]
+            # )
         )
-        # long_average = (
-        #     boxed
-        #     | "LongWindow"
-        #     >> beam.WindowInto(SlidingWindows(self.long_duration, self.short_duration))
-        #     | "LongLongReify" >> Reify.Window()
-        #     | "LongElemKV" >> beam.Map(elem_to_kv)
-        #     | "LongAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
-        #     | "MatchToShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
-        #     | "LongShortReify" >> Reify.Window()
-        #     | "LongMetricsKV" >> beam.Map(metric_to_kv)
-        # )
-        return short_average
-        # return (
-        #     (short_average, long_average) | beam.CoGroupByKey()
-        #     # | beam.FlatMap(as_motivations)
-        # )
+        long_average = (
+            boxed
+            | "LongWindow"
+            >> beam.WindowInto(SlidingWindows(self.long_duration, self.short_duration))
+            # | "LongElemToKV" >> ElemToKV(indicator="long", verbose=self.verbose)
+            | "LongAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
+            | "MatchToShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
+            # | "LongMericToKV"
+            # >> MetricToKV(indicator="long", verbose=self.verbose).with_input_types(
+            #     typing.Tuple[str, float]
+            # )
+        )
+        return (
+            (short_average, long_average)
+            | beam.CoGroupByKey()
+            | beam.FlatMap(as_motivations)
+        )
 
 
 def run():
@@ -155,7 +139,14 @@ def run():
         )
         | "SportsTrackerMotivation"
         >> SportTrackerMotivation(short_duration=20, long_duration=100, verbose=False)
-        | beam.Map(print)
+        | "WriteNotifications"
+        >> WriteNotificationsToKafka(
+            bootstrap_servers=os.getenv(
+                "BOOTSTRAP_SERVERS",
+                "host.docker.internal:29092",
+            ),
+            topic=opts.job_name,
+        )
     )
 
     logging.getLogger().setLevel(logging.WARN)
