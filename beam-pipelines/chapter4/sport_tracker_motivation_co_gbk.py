@@ -40,51 +40,70 @@ class SportTrackerMotivation(beam.PTransform):
             ],
         ):
             shorts, longs = element[1]
-            short_avg = shorts[0] if len(shorts) > 0 else None
-            long_avg = longs[0] if len(longs) > 0 else None
-            rel_perform = (
-                short_avg / long_avg
-                if short_avg is not None and long_avg is not None
-                else -1
-            )
-            print(
-                f"key {element[0]} short avg {short_avg}, long avg {long_avg}, rel_perfom {rel_perform}"
-            )
-            if (
-                short_avg is not None
-                or long_avg is not None
-                or (0.9 < rel_perform < 1.1)
-            ):
+            short_avg = next(iter(shorts), None)
+            long_avg = next(iter(longs), None)
+            if long_avg in [None, 0] or short_avg in [None, 0]:
+                status = None
+            else:
+                diff = short_avg / long_avg
+                if diff < 0.9:
+                    status = "underperforming"
+                elif diff < 1.1:
+                    status = "pacing"
+                else:
+                    status = "outperforming"
+            if self.verbose and element[0] == "user0":
+                print(
+                    f"key {element[0]} short {short_avg}, long {long_avg}, status {status}"
+                )
+            if status is None:
                 return []
-            return [(element[0], short_avg > long_avg)]
+            return [(element[0], status)]
 
-        def to_kv(
+        def elem_to_kv(
             element: typing.Tuple[typing.Tuple[str, Metric], Timestamp, BoundedWindow],
         ) -> typing.Tuple[str, Metric]:
             value, timestamp, window = element
-            if self.verbose:
-                print(f">>>>SportTrackerMotivation.to_kv<<<<{str(window)} {timestamp} {value}")
+            if True and value[0] == "user0":
+                print(
+                    f">>>>SportTrackerMotivation.elem_to_kv<<<<{str(window)} {timestamp} {value}"
+                )
+            return value
+
+        def metric_to_kv(
+            element,
+        ) -> typing.Tuple[str, float]:
+            value, timestamp, window = element
+            if True and value[0] == "user0":
+                print(
+                    f">>>>SportTrackerMotivation.metric_to_kv<<<<{str(window)} {timestamp} {value}"
+                )
             return value
 
         boxed = pcoll | "ComputeMetrics" >> ComputeBoxedMetrics(verbose=self.verbose)
         short_average = (
             boxed
             | "ShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
-            # | Reify.Window() | beam.Map(to_kv)
+            | "ShortReify" >> Reify.Window()
+            | "ShortElemKV" >> beam.Map(elem_to_kv)
             | "ShortAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
         )
-        long_average = (
-            boxed
-            | "LongWindow"
-            >> beam.WindowInto(SlidingWindows(self.long_duration, self.short_duration))
-            # | Reify.Window() | beam.Map(to_kv)
-            | "LongAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
-            | "MatchToShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
-        )
-        return (
-            (short_average, long_average) | beam.CoGroupByKey()
-            # | beam.FlatMap(as_motivations)
-        )
+        # long_average = (
+        #     boxed
+        #     | "LongWindow"
+        #     >> beam.WindowInto(SlidingWindows(self.long_duration, self.short_duration))
+        #     | "LongLongReify" >> Reify.Window()
+        #     | "LongElemKV" >> beam.Map(elem_to_kv)
+        #     | "LongAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
+        #     | "MatchToShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
+        #     | "LongShortReify" >> Reify.Window()
+        #     | "LongMetricsKV" >> beam.Map(metric_to_kv)
+        # )
+        return short_average
+        # return (
+        #     (short_average, long_average) | beam.CoGroupByKey()
+        #     # | beam.FlatMap(as_motivations)
+        # )
 
 
 def run():
@@ -129,13 +148,13 @@ def run():
         >> ReadPositionsFromKafka(
             bootstrap_servers=os.getenv(
                 "BOOTSTRAP_SERVERS",
-                ":29092",
+                "host.docker.internal:29092",
             ),
             topics=[opts.input],
             group_id=opts.job_name,
         )
         | "SportsTrackerMotivation"
-        >> SportTrackerMotivation(short_duration=20, long_duration=120, verbose=False)
+        >> SportTrackerMotivation(short_duration=20, long_duration=100, verbose=False)
         | beam.Map(print)
     )
 

@@ -27,11 +27,11 @@ class TrackGenerator:
         for ind, position in enumerate(self.positions):
             self.positions[ind] = self.move(
                 start=position,
-                duration=time.time() - position.timestamp,
                 delta=random.randint(-10, 10),
+                duration=time.time() - position.timestamp,
             )
 
-    def move(self, start: Position, duration: float, delta: int):
+    def move(self, start: Position, delta: int, duration: float):
         spot, timestamp = tuple(start)
         return Position(spot=spot + delta, timestamp=timestamp + duration)
 

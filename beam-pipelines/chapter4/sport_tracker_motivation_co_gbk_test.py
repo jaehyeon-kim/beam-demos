@@ -15,10 +15,10 @@ from apache_beam.utils.timestamp import Timestamp
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
 from sport_tracker_utils import Position
-from sport_tracker_motivation_co_gbk import SportTrackerMotivation, MeanPaceCombineFn
+from sport_tracker_motivation_co_gbk import SportTrackerMotivation
 
 
-def move(start: Position, duration: float, delta: int):
+def move(start: Position, delta: int, duration: float):
     spot, timestamp = tuple(start)
     return Position(spot=spot + delta, timestamp=timestamp + duration)
 
@@ -31,85 +31,85 @@ def main(out=sys.stderr, verbosity=2):
 
 
 class SportTrackerMotivationTest(unittest.TestCase):
-    def test_windowing_behaviour(self):
-        options = PipelineOptions()
-        options.view_as(StandardOptions).streaming = True
-        with TestPipeline(options=options) as p:
-            # current_ms = int(time.time() * 1000)
-            current_ms = 0
-            init_position = Position.create(spot=0, timestamp=current_ms)
-            user0s = [
-                ("user0", init_position),
-                ("user0", move(init_position, duration=180, delta=10)),
-                ("user0", move(init_position, duration=180, delta=20)),
-            ]
-            user1s = [
-                ("user1", init_position),
-                ("user1", move(init_position, duration=240, delta=-10)),
-                ("user1", move(init_position, duration=120, delta=-20)),
-            ]
-            inputs = chain(*zip(user0s, user1s))
-
-            test_stream = TestStream()
-            for input in inputs:
-                test_stream.add_elements(
-                    [TimestampedValue(input, Timestamp.of(input[1].timestamp))]
-                )
-            test_stream.advance_watermark_to_infinity()
-
-            output = (
-                p
-                | test_stream.with_output_types(typing.Tuple[str, Position])
-                # | SportTrackerMotivation(short_duration=60, long_duration=300)
-                # | beam.CombinePerKey(MeanPaceCombineFn())
-                | beam.Map(print)
-            )
-
-    # def test_windowing_behaviour(self):
+    # def test_pipeline_bounded(self):
     #     options = PipelineOptions()
-    #     options.view_as(StandardOptions).streaming = True
     #     with TestPipeline(options=options) as p:
-    #         current_ms = int(time.time() * 1000)
-    #         inputs = [
-    #             ("user0", random_position(timestamp_ms=current_ms)),
-    #             ("user1", random_position(timestamp_ms=current_ms)),
+    #         # now = time.time()
+    #         now = 0
+    #         user0s = [
+    #             ("user0", Position.create(spot=0, timestamp=now)),
+    #             ("user0", Position.create(spot=25, timestamp=now + 20)),
+    #             ("user0", Position.create(spot=22, timestamp=now + 40)),
     #         ]
-    #         inputs.append(("user0", move(inputs[0][1], (1.0, 1.0), 3, 1000)))
-    #         inputs.append(("user1", move(inputs[1][1], (1.0, 1.0), 2, 1000)))
-    #         inputs.append(("user0", move(inputs[2][1], (1.0, 1.0), 2.5, 3000)))
-    #         inputs.append(("user1", move(inputs[3][1], (1.0, 1.0), 2.5, 3000)))
-
-    #         watermarks = [
-    #             current_ms / 1000 + 1000,
-    #             current_ms / 1000 + 1100,
-    #             current_ms / 1000 + 1200,
-    #             current_ms / 1000 + 1300,
+    #         user1s = [
+    #             ("user1", Position.create(spot=0, timestamp=now)),
+    #             ("user1", Position.create(spot=-20, timestamp=now + 20)),
+    #             ("user1", Position.create(spot=80, timestamp=now + 40)),
     #         ]
+    #         inputs = chain(*zip(user0s, user1s))
 
     #         test_stream = TestStream()
-    #         test_stream.advance_watermark_to(Timestamp.of(current_ms / 1000))
     #         for input in inputs:
-    #             test_stream.add_elements(
-    #                 [
-    #                     TimestampedValue(
-    #                         input, Timestamp.of(input[1].timestamp_ms / 1000)
-    #                     )
-    #                 ]
-    #             )
-    #             if len(watermarks) > 0:
-    #                 test_stream.advance_watermark_to(Timestamp.of(watermarks.pop(0)))
+    #             test_stream.add_elements([input], event_timestamp=input[1].timestamp)
     #         test_stream.advance_watermark_to_infinity()
 
     #         output = (
     #             p
     #             | test_stream.with_output_types(typing.Tuple[str, Position])
-    #             | SportTrackerMotivation(short_duration=60, long_duration=300)
-    #             | beam.Map(print)
+    #             | SportTrackerMotivation(short_duration=20, long_duration=100)
     #         )
 
-    #         # EXPECTED_OUTPUT = compute_expected_metrics(lines)
+    #         EXPECTED_OUTPUT = [
+    #             ("user0", "pacing"),
+    #             ("user1", "pacing"),
+    #             ("user0", "underperforming"),
+    #             ("user1", "outperforming"),
+    #         ]
 
-    #         # assert_that(output, equal_to(EXPECTED_OUTPUT))
+    #         assert_that(output, equal_to(EXPECTED_OUTPUT))
+
+    def test_pipeline_unbounded(self):
+        options = PipelineOptions()
+        options.view_as(StandardOptions).streaming = True
+        with TestPipeline(options=options) as p:
+            # now = time.time()
+            now = 0
+            user0s = [
+                ("user0", Position.create(spot=0, timestamp=now)),
+                ("user0", Position.create(spot=25, timestamp=now + 23)),
+                ("user0", Position.create(spot=22, timestamp=now + 39)),
+            ]
+            user1s = [
+                ("user1", Position.create(spot=0, timestamp=now)),
+                ("user1", Position.create(spot=-20, timestamp=now + 25)),
+                ("user1", Position.create(spot=80, timestamp=now + 39)),
+            ]
+            inputs = chain(*zip(user0s, user1s))
+            watermarks = [now + 10, now + 17, now + 20, now + 22, now + 39, now + 40]
+
+            test_stream = TestStream()
+            test_stream.advance_watermark_to(Timestamp.of(now))
+            for ind, input in enumerate(inputs):
+                test_stream.add_elements([input], event_timestamp=input[1].timestamp)
+                if watermarks:
+                    test_stream.advance_watermark_to(Timestamp.of(watermarks.pop(0)))
+            test_stream.advance_watermark_to_infinity()
+
+            output = (
+                p
+                | test_stream.with_output_types(typing.Tuple[str, Position])
+                | SportTrackerMotivation(short_duration=30, long_duration=90)
+                # | beam.Map(print)
+            )
+
+            # EXPECTED_OUTPUT = [
+            #     ("user0", "pacing"),
+            #     ("user1", "pacing"),
+            #     ("user0", "underperforming"),
+            #     ("user1", "outperforming"),
+            # ]
+
+            # assert_that(output, equal_to(EXPECTED_OUTPUT))
 
 
 if __name__ == "__main__":

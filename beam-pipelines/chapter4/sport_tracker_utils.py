@@ -60,19 +60,19 @@ class Metric(typing.NamedTuple):
         return cls(**d)
 
 
-class MetricCoder(beam.coders.Coder):
-    def encode(self, value: Metric):
-        return value.to_bytes()
+# class MetricCoder(beam.coders.Coder):
+#     def encode(self, value: Metric):
+#         return value.to_bytes()
 
-    def decode(self, encoded: bytes):
-        return Metric.from_bytes(encoded)
+#     def decode(self, encoded: bytes):
+#         return Metric.from_bytes(encoded)
 
-    def is_deterministic(self) -> bool:
-        return True
+#     def is_deterministic(self) -> bool:
+#         return True
 
 
 beam.coders.registry.register_coder(Position, PositionCoder)
-beam.coders.registry.register_coder(Metric, MetricCoder)
+# beam.coders.registry.register_coder(Metric, MetricCoder)
 
 
 class ToMetricFn(beam.DoFn):
@@ -97,7 +97,9 @@ class ToMetricFn(beam.DoFn):
             flush_timer.set(timestamp)
         buffer.add(element[1])
         if self.verbose and element[0] == "user0":
-            print(f">>>>ToMetricFn.process<<<< key {element[0]} ts {element[1].timestamp}")
+            print(
+                f">>>>ToMetricFn.process<<<< key {element[0]} ts {element[1].timestamp}"
+            )
 
     @on_timer(FLUSH_TIMER)
     def flush(
@@ -110,7 +112,7 @@ class ToMetricFn(beam.DoFn):
         for item in buffer.read():
             items.append(item)
             if self.verbose and key == "user0":
-                print(f">>>>ToMetricFn.flush  <<<< key {key} ts {item.timestamp}")              
+                print(f">>>>ToMetricFn.flush  <<<< key {key} ts {item.timestamp}")
 
         items = list(sorted(items, key=lambda p: p.timestamp))
         outputs = list(self.flush_metrics(items, key))
@@ -120,12 +122,12 @@ class ToMetricFn(beam.DoFn):
         min_timestamp.clear()
         return outputs
 
-    def flush_metrics(self, flush: typing.List[Position], key: str):
+    def flush_metrics(self, items: typing.List[Position], key: str):
         i = 1
-        while i < len(flush):
-            last = flush[i - 1]
-            next = flush[i]
-            distance = next.spot - last.spot
+        while i < len(items):
+            last = items[i - 1]
+            next = items[i]
+            distance = abs(next.spot - last.spot)
             duration = next.timestamp - last.timestamp
             if duration > 0:
                 yield TimestampedValue(
@@ -194,14 +196,6 @@ class ReadPositionsFromKafka(beam.PTransform):
             workout, spot, timestamp = tuple(re.sub("\n", "", input).split("\t"))
             return workout, Position(spot=int(spot), timestamp=float(timestamp))
 
-        class AddTS(beam.DoFn):
-            def process(
-                self,
-                element: typing.Tuple[str, Position],
-                timestamp=beam.DoFn.TimestampParam,
-            ):
-                yield timestamp, element[1].timestamp
-
         return (
             input
             | kafka.ReadFromKafka(
@@ -216,8 +210,6 @@ class ReadPositionsFromKafka(beam.PTransform):
             | beam.Map(decode_message)
             | beam.Map(to_positions)
             | beam.Map(add_timestamp)
-            # | Reify.Timestamp()
-            # | beam.ParDo(AddTS())
         )
 
 
