@@ -147,7 +147,7 @@ def run():
             group_id=opts.job_name,
         )
         | "SportsTrackerMotivation"
-        >> SportTrackerMotivation(short_duration=20, long_duration=100, verbose=False)
+        >> SportTrackerMotivation(short_duration=20, long_duration=100)
         | "WriteNotifications"
         >> WriteNotificationsToKafka(
             bootstrap_servers=os.getenv(

@@ -60,19 +60,19 @@ class Metric(typing.NamedTuple):
         return cls(**d)
 
 
-class MetricCoder(beam.coders.Coder):
-    def encode(self, value: Metric):
-        return value.to_bytes()
+# class MetricCoder(beam.coders.Coder):
+#     def encode(self, value: Metric):
+#         return value.to_bytes()
 
-    def decode(self, encoded: bytes):
-        return Metric.from_bytes(encoded)
+#     def decode(self, encoded: bytes):
+#         return Metric.from_bytes(encoded)
 
-    def is_deterministic(self) -> bool:
-        return True
+#     def is_deterministic(self) -> bool:
+#         return True
 
 
 beam.coders.registry.register_coder(Position, PositionCoder)
-beam.coders.registry.register_coder(Metric, MetricCoder)
+# beam.coders.registry.register_coder(Metric, MetricCoder)
 
 
 class ToMetricFn(beam.DoFn):
