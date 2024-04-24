@@ -14,11 +14,6 @@ from sport_tracker_utils import Position
 from sport_tracker_motivation_co_gbk import SportTrackerMotivation
 
 
-def move(start: Position, delta: int, duration: float):
-    spot, timestamp = tuple(start)
-    return Position(spot=spot + delta, timestamp=timestamp + duration)
-
-
 def main(out=sys.stderr, verbosity=2):
     loader = unittest.TestLoader()
 

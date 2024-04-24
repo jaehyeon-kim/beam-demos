@@ -104,19 +104,16 @@ class WriteMetricsToKafka(beam.PTransform):
         self,
         bootstrap_servers: str,
         topic: str,
-        verbose: bool = False,
         label: str | None = None,
     ):
         super().__init__(label)
         self.boostrap_servers = bootstrap_servers
         self.topic = topic
-        self.verbose = verbose
 
     def expand(self, pcoll: pvalue.PCollection):
         def create_message(element: typing.Tuple[str, float]):
             msg = json.dumps(dict(zip(["user", "speed"], element)))
-            if self.verbose:
-                print(msg)
+            print(msg)
             return "".encode("utf-8"), msg.encode("utf-8")
 
         return (

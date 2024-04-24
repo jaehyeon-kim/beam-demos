@@ -152,7 +152,7 @@ class MeanPaceCombineFn(beam.CombineFn):
     def extract_output(self, accumulator: Metric):
         if accumulator.duration == 0:
             return float("NaN")
-        return accumulator.distance / (accumulator.duration)
+        return accumulator.distance / accumulator.duration
 
     def get_accumulator_coder(self):
         return beam.coders.registry.get_coder(Metric)
@@ -219,19 +219,16 @@ class WriteNotificationsToKafka(beam.PTransform):
         self,
         bootstrap_servers: str,
         topic: str,
-        verbose: bool = False,
         label: str | None = None,
     ):
         super().__init__(label)
         self.boostrap_servers = bootstrap_servers
         self.topic = topic
-        self.verbose = verbose
 
     def expand(self, pcoll: pvalue.PCollection):
         def create_message(element: tuple):
             msg = json.dumps({"track": element[0], "notification": element[1]})
-            if self.verbose:
-                print(msg)
+            print(msg)
             return element[0].encode("utf-8"), msg.encode("utf-8")
 
         return (
