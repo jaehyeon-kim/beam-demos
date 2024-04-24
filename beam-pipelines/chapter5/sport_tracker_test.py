@@ -27,14 +27,14 @@ class SportTrackerTest(unittest.TestCase):
         options = PipelineOptions([], **pipeline_opts)
         with TestPipeline(options=options) as p:
             lines = [
-                "user0	0	0",
-                "user1	10	2",
-                "user0	5	4",
-                "user1	3	3",
-                "user0	10	6",
-                "user1	2	7",
-                "user0	4	9",
-                "user1	10	9",
+                "user0\t0\t0",
+                "user1\t10\t2",
+                "user0\t5\t4",
+                "user1\t3\t3",
+                "user0\t10\t6",
+                "user1\t2\t7",
+                "user0\t4\t9",
+                "user1\t10\t9",
             ]
             test_stream = TestStream(coder=coders.StrUtf8Coder()).with_output_types(str)
             for line in lines:
