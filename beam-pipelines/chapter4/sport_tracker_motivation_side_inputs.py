@@ -34,6 +34,14 @@ class SportTrackerMotivation(beam.PTransform):
         self.verbose = verbose
 
     def expand(self, pcoll: pvalue.PCollection):
+        def cross_join(
+            left: typing.Tuple[str, float],
+            rights: typing.Iterable[typing.Tuple[str, float]],
+        ):
+            for x in rights:
+                if left[0] == x[0]:
+                    yield left[0], ([left[1]], [x[1]])
+
         def as_motivations(
             element: typing.Tuple[
                 str, typing.Tuple[typing.Iterable[float], typing.Iterable[float]]
@@ -84,8 +92,9 @@ class SportTrackerMotivation(beam.PTransform):
             # )
         )
         return (
-            (short_average, long_average)
-            | beam.CoGroupByKey()
+            short_average
+            | "ApplyCrossJoin"
+            >> beam.FlatMap(cross_join, rights=beam.pvalue.AsIter(long_average))
             | beam.FlatMap(as_motivations)
         )
 

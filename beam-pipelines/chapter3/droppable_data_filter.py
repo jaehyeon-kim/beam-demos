@@ -173,7 +173,7 @@ def run():
         default=4,
         help="Maximum wait seconds before processing",
     )
-    parser.add_argument("--input", default="text-input", help="Input topic")
+    parser.add_argument("--input", default="input-topic", help="Input topic")
     parser.add_argument(
         "--job_name",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),

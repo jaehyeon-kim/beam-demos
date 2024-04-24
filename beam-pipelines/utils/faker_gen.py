@@ -17,7 +17,7 @@ if __name__ == "__main__":
         "--topic_name",
         "-t",
         type=str,
-        default="text-input",
+        default="input-topic",
         help="Kafka topic name",
     )
     parser.add_argument(

@@ -52,7 +52,7 @@ def run():
     )
     parser.add_argument("--length", default="5", type=int, help="Window length")
     parser.add_argument("--top", default="3", type=int, help="Top k")
-    parser.add_argument("--input", default="text-input", help="Input topic")
+    parser.add_argument("--input", default="input-topic", help="Input topic")
     parser.add_argument(
         "--job_name",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
