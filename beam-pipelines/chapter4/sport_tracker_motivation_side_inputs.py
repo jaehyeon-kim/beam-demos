@@ -107,7 +107,7 @@ def run():
         action="store_true",
         default="Flag to indicate whether to use an own local cluster",
     )
-    parser.add_argument("--input", default="text-input", help="Input topic")
+    parser.add_argument("--input", default="input-topic", help="Input topic")
     parser.add_argument(
         "--job_name",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
