@@ -47,6 +47,9 @@ class PositionCoder(beam.coders.Coder):
         return True
 
 
+beam.coders.registry.register_coder(Position, PositionCoder)
+
+
 class Metric(typing.NamedTuple):
     distance: float
     duration: int
@@ -58,21 +61,6 @@ class Metric(typing.NamedTuple):
     def from_bytes(cls, encoded: bytes):
         d = json.loads(encoded.decode("utf-8"))
         return cls(**d)
-
-
-# class MetricCoder(beam.coders.Coder):
-#     def encode(self, value: Metric):
-#         return value.to_bytes()
-
-#     def decode(self, encoded: bytes):
-#         return Metric.from_bytes(encoded)
-
-#     def is_deterministic(self) -> bool:
-#         return True
-
-
-beam.coders.registry.register_coder(Position, PositionCoder)
-# beam.coders.registry.register_coder(Metric, MetricCoder)
 
 
 class ToMetricFn(beam.DoFn):
@@ -170,6 +158,22 @@ class MeanPaceCombineFn(beam.CombineFn):
         return beam.coders.registry.get_coder(Metric)
 
 
+class PreProcessInput(beam.PTransform):
+    def expand(self, pcoll: pvalue.PCollection):
+        def add_timestamp(element: typing.Tuple[str, Position]):
+            return TimestampedValue(element, Timestamp.of(element[1].timestamp))
+
+        def to_positions(input: str):
+            workout, spot, timestamp = tuple(re.sub("\n", "", input).split("\t"))
+            return workout, Position(spot=int(spot), timestamp=float(timestamp))
+
+        return (
+            pcoll
+            | "ToPositions" >> beam.Map(to_positions)
+            | "AddTS" >> beam.Map(add_timestamp)
+        )
+
+
 @beam.typehints.with_output_types(typing.Tuple[str, Position])
 class ReadPositionsFromKafka(beam.PTransform):
     def __init__(
@@ -192,13 +196,6 @@ class ReadPositionsFromKafka(beam.PTransform):
                 print(kafka_kv)
             return kafka_kv[1].decode("utf-8")
 
-        def add_timestamp(element: typing.Tuple[str, Position]):
-            return TimestampedValue(element, Timestamp.of(element[1].timestamp))
-
-        def to_positions(input: str):
-            workout, spot, timestamp = tuple(re.sub("\n", "", input).split("\t"))
-            return workout, Position(spot=int(spot), timestamp=float(timestamp))
-
         return (
             input
             | "ReadFromKafka"
@@ -210,10 +207,10 @@ class ReadPositionsFromKafka(beam.PTransform):
                     "group.id": self.group_id,
                 },
                 topics=self.topics,
+                timestamp_policy=kafka.ReadFromKafka.create_time_policy,
             )
             | "DecodeMsg" >> beam.Map(decode_message)
-            | "ToPositions" >> beam.Map(to_positions)
-            | "AddTS" >> beam.Map(add_timestamp)
+            | "PreProcessInput" >> PreProcessInput()
         )
 
 
