@@ -1,18 +1,12 @@
 import os
 import argparse
-import json
 import re
 import logging
 import typing
-import math
 
 import apache_beam as beam
-from apache_beam.io import kafka
-from apache_beam.transforms.window import (
-    GlobalWindows,
-    TimestampCombiner,
-    TimestampedValue,
-)
+from apache_beam import pvalue
+from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
 from apache_beam.transforms.trigger import (
     AfterWatermark,
     AccumulationMode,
@@ -21,60 +15,30 @@ from apache_beam.transforms.trigger import (
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
-
-class Position(typing.NamedTuple):
-    latitude: float
-    longitude: float
-    timestamp: int
-
-
-beam.coders.registry.register_coder(Position, beam.coders.RowCoder)
+from sport_tracker_utils import (
+    Position,
+    Metric,
+    ReadPositionsFromKafka,
+    WriteMetricsToKafka,
+)
 
 
-def decode_message(kafka_kv: tuple):
-    print(kafka_kv)
-    return kafka_kv[1].decode("utf-8")
+class ComputeMetrics(beam.PTransform):
+    def expand(self, pcoll: pvalue.PCollection):
+        def compute(element: typing.Tuple[str, typing.Iterable[Position]]):
+            last: Position = None
+            distance = 0
+            duration = 0
+            for p in sorted(element[1], key=lambda p: p.timestamp):
+                if last is not None:
+                    distance += abs(p.spot - last.spot)
+                    duration += p.timestamp - last.timestamp
+                last = p
+            return element[0], Metric(distance, duration)
 
-
-def create_message(element: typing.Tuple[str, int, float]):
-    msg = json.dumps(dict(zip(["user", "total_time", "total_distance"], element)))
-    print(msg)
-    return "".encode("utf-8"), msg.encode("utf-8")
-
-
-def to_positions(input: str):
-    workout, latitude, longitude, timestamp = tuple(re.sub("\n", "", input).split("\t"))
-    return workout, Position(
-        latitude=float(latitude), longitude=float(longitude), timestamp=int(timestamp)
-    )
-
-
-def get_distance(first: Position, second: Position):
-    EARTH_DIAMETER = 6_371_000
-    delta_latitude = (first.latitude - second.latitude) * math.pi / 180
-    delta_longitude = (first.longitude - second.longitude) * math.pi / 180
-    latitude_inc_in_meters = math.sqrt(2 * (1 - math.cos(delta_latitude)))
-    longitude_inc_in_meters = math.sqrt(2 * (1 - math.cos(delta_longitude)))
-    return EARTH_DIAMETER * math.sqrt(
-        latitude_inc_in_meters * latitude_inc_in_meters
-        + longitude_inc_in_meters * longitude_inc_in_meters
-    )
-
-
-def compute_matrics(key: str, positions: typing.List[Position]):
-    last: Position = None
-    total_time = 0
-    total_distance = 0
-    for p in sorted(positions, key=lambda p: p.timestamp):
-        if last is not None:
-            total_distance += get_distance(last, p)
-            total_time += p.timestamp - last.timestamp
-        last = p
-    return key, total_time, total_distance
-
-
-def assign_timestamp(element: typing.Tuple[str, Position]):
-    return TimestampedValue(element, element[1].timestamp)
+        return (
+            pcoll | "GroupByKey" >> beam.GroupByKey() | "Compute" >> beam.Map(compute)
+        )
 
 
 def run():
@@ -85,7 +49,7 @@ def run():
         action="store_true",
         default="Flag to indicate whether to use an own local cluster",
     )
-    parser.add_argument("--input", default="text-input", help="Input topic")
+    parser.add_argument("--input", default="input-topic", help="Input topic")
     parser.add_argument(
         "--job_name",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
@@ -115,45 +79,32 @@ def run():
     p = beam.Pipeline(options=options)
     (
         p
-        | "Read from Kafka"
-        >> kafka.ReadFromKafka(
-            consumer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                ),
-                "auto.offset.reset": "earliest",
-                # "enable.auto.commit": "true",
-                "group.id": opts.job_name,
-            },
+        | "ReadPositions"
+        >> ReadPositionsFromKafka(
+            bootstrap_servers=os.getenv(
+                "BOOTSTRAP_SERVERS",
+                "host.docker.internal:29092",
+            ),
             topics=[opts.input],
-            timestamp_policy=kafka.ReadFromKafka.create_time_policy,
+            group_id=opts.job_name,
         )
-        | "Decode messages" >> beam.Map(decode_message)
-        | "To positions" >> beam.Map(to_positions)
-        | "With timestamps" >> beam.Map(assign_timestamp)
         | "Windowing"
         >> beam.WindowInto(
             GlobalWindows(),
             trigger=AfterWatermark(early=AfterProcessingTime(3)),
-            # impossible to allow late date using default timestamp policies
+            # impossible to allow late data using default timestamp policies
             # unless manually specifying timestamp by producer
             allowed_lateness=0,
             timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
             accumulation_mode=AccumulationMode.ACCUMULATING,
         )
-        | "Group by workout" >> beam.GroupByKey()
-        | "Compute metrics" >> beam.Map(lambda e: compute_matrics(*e))
-        | "Create messages"
-        >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
-        | "Write to Kafka"
-        >> kafka.WriteToKafka(
-            producer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                )
-            },
+        | "ComputeMetrics" >> ComputeMetrics()
+        | "WriteNotifications"
+        >> WriteMetricsToKafka(
+            bootstrap_servers=os.getenv(
+                "BOOTSTRAP_SERVERS",
+                "host.docker.internal:29092",
+            ),
             topic=opts.job_name,
         )
     )

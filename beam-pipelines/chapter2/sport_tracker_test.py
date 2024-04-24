@@ -1,6 +1,7 @@
 import sys
 import os
-import time
+import re
+import typing
 import unittest
 
 import apache_beam as beam
@@ -16,13 +17,8 @@ from apache_beam.transforms.trigger import (
 from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
-from sport_tracker import (
-    Position,
-    to_positions,
-    assign_timestamp,
-    get_distance,
-    compute_matrics,
-)
+from sport_tracker_utils import Position, Metric, PreProcessInput
+from sport_tracker import ComputeMetrics
 
 
 def read_file(filename: str, inputpath: str):
@@ -30,17 +26,30 @@ def read_file(filename: str, inputpath: str):
         return f.readlines()
 
 
+def compute_matrics(key: str, positions: typing.List[Position]):
+    last: Position = None
+    distance = 0
+    duration = 0
+    for p in sorted(positions, key=lambda p: p.timestamp):
+        if last is not None:
+            distance += abs(int(p.spot) - int(last.spot))
+            duration += float(p.timestamp) - float(last.timestamp)
+        last = p
+    return key, Metric(distance, duration)
+
+
 def compute_expected_metrics(lines: list):
     ones, twos = [], []
     for line in lines:
-        position = to_positions(line)
-        if position[0] == "track1":
-            ones.append(position[1])
+        workout, spot, timestamp = tuple(re.sub("\n", "", line).split("\t"))
+        position = Position(spot, timestamp)
+        if workout == "user0":
+            ones.append(position)
         else:
-            twos.append(position[1])
+            twos.append(position)
     return [
-        compute_matrics(key="track1", positions=ones),
-        compute_matrics(key="track2", positions=twos),
+        compute_matrics(key="user0", positions=ones),
+        compute_matrics(key="user1", positions=twos),
     ]
 
 
@@ -52,26 +61,6 @@ def main(out=sys.stderr, verbosity=2):
 
 
 class SportTrackerTest(unittest.TestCase):
-    def test_gps_delta_length_calculation(self):
-        now = int(time.time() * 1000)
-        p1 = Position(
-            latitude=64.53165930148285, longitude=-17.3172239914558, timestamp=now
-        )
-        p2 = Position(
-            latitude=64.53168645625584, longitude=-17.316554613536688, timestamp=now
-        )
-        distance = get_distance(p1, p2)
-        self.assertTrue(distance < 80, f"Expected less then 80 nmeters, got {distance}")
-        self.assertTrue(distance > 30, f"Expected more then 80 nmeters, got {distance}")
-        self.assertAlmostEqual(distance, get_distance(p2, p1), places=0.001)
-        self.assertAlmostEqual(0.0, get_distance(p1, p1), places=0.001)
-        self.assertAlmostEqual(0.0, get_distance(p2, p2), places=0.001)
-
-        p3 = Position(latitude=0, longitude=0, timestamp=now)
-        p4 = Position(latitude=0, longitude=0.1, timestamp=now)
-        self.assertAlmostEqual(11119, get_distance(p3, p4), delta=1)
-        self.assertAlmostEqual(11119, get_distance(p4, p3), delta=1)
-
     def test_windowing_behaviour(self):
         options = PipelineOptions()
         options.view_as(StandardOptions).streaming = True
@@ -88,8 +77,7 @@ class SportTrackerTest(unittest.TestCase):
             output = (
                 p
                 | test_stream
-                | "To positions" >> beam.Map(to_positions)
-                | "With timestamps" >> beam.Map(assign_timestamp)
+                | "PreProcessInput" >> PreProcessInput()
                 | "Windowing"
                 >> beam.WindowInto(
                     GlobalWindows(),
@@ -98,8 +86,7 @@ class SportTrackerTest(unittest.TestCase):
                     timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
                     accumulation_mode=AccumulationMode.ACCUMULATING,
                 )
-                | "Group by workout" >> beam.GroupByKey()
-                | "Compute metrics" >> beam.Map(lambda e: compute_matrics(*e))
+                | "ComputeMetrics" >> ComputeMetrics()
             )
 
             EXPECTED_OUTPUT = compute_expected_metrics(lines)
