@@ -1,55 +1,90 @@
 import os
 import argparse
 import re
-import logging
 import typing
+import logging
 
 import apache_beam as beam
 from apache_beam import pvalue, coders
 from apache_beam.transforms.sql import SqlTransform
-from apache_beam.transforms.window import TimestampCombiner, FixedWindows
-from apache_beam.transforms.trigger import AccumulationMode
+from apache_beam.transforms.window import FixedWindows, SlidingWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
 from sport_tracker_utils import (
-    Position,
+    Metric,
     ReadPositionsFromKafka,
-    WriteMetricsToKafka,
+    WriteNotificationsToKafka,
+    ComputeBoxedMetrics,
 )
 
 
-class Track(typing.NamedTuple):
+class Workout(typing.NamedTuple):
     user: str
-    spot: int
-    timestamp: float
+    distance: int
+    duration: float
 
 
-coders.registry.register_coder(Track, coders.RowCoder)
+coders.registry.register_coder(Workout, coders.RowCoder)
 
 
-class ComputeMetrics(beam.PTransform):
+class SportTrackerMotivation(beam.PTransform):
+    def __init__(
+        self,
+        short_duration: int,
+        long_duration: int,
+        verbose: bool = False,
+        label: str | None = None,
+    ):
+        super().__init__(label)
+        self.short_duration = short_duration
+        self.long_duration = long_duration
+        self.verbose = verbose
+
     def expand(self, pcoll: pvalue.PCollection):
-        def to_track(element: typing.Tuple[str, Position]):
-            return Track(element[0], element[1].spot, element[1].timestamp)
+        def to_workout(element: typing.Tuple[str, Metric]):
+            return Workout(element[0], element[1].distance, element[1].duration)
+
+        def qry_speed(col_name: str):
+            return f"""
+            SELECT
+                `user`,
+                CASE WHEN SUM(duration) = 0 THEN 0 ELSE SUM(distance) / SUM(duration) END AS {col_name}
+            FROM PCOLLECTION
+            GROUP BY `user`
+                """
+
+        boxed = pcoll | "ComputeMetrics" >> ComputeBoxedMetrics(verbose=self.verbose)
+        workout = boxed | beam.Map(to_workout).with_output_types(Workout)
+
+        short_average = (
+            workout
+            | "ShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
+            | "ShortAverage" >> SqlTransform(qry_speed("short_avg"))
+        )
+
+        long_average = (
+            workout
+            | "LongWindow"
+            >> beam.WindowInto(SlidingWindows(self.long_duration, self.short_duration))
+            | "LongAverage" >> SqlTransform(qry_speed("long_avg"))
+            | "MatchToShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
+        )
 
         return (
-            pcoll
-            | "ToTrack" >> beam.Map(to_track).with_output_types(Track)
-            | "Compute"
-            >> SqlTransform(
+            {"short": short_average, "long": long_average}
+            | SqlTransform(
                 """
                 WITH cte AS (
-                    SELECT
-                        `user`,
-                        MIN(`spot`) - MAX(`spot`) AS distance,
-                        MIN(`timestamp`) - MAX(`timestamp`) AS duration
-                    FROM PCOLLECTION
-                    GROUP BY `user`
+                    SELECT short.`user` AS `user`, short_avg / long_avg AS `diff`
+                    FROM short
+                    JOIN long ON short.`user` = long.`user`
                 )
                 SELECT 
-                    `user`,
-                    CASE WHEN duration = 0 THEN 0 ELSE distance / duration END AS speed
+                    `user`, 
+                    CASE WHEN `diff` < 0.9 THEN 'underperforming'
+                         WHEN `diff` < 1.1 THEN 'pacing'
+                    ELSE 'outperforming' END AS performance
                 FROM cte
                 """
             )
@@ -104,16 +139,10 @@ def run():
             topics=[opts.input],
             group_id=opts.job_name,
         )
-        | "Windowing"
-        >> beam.WindowInto(
-            FixedWindows(5),
-            allowed_lateness=0,
-            timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
-            accumulation_mode=AccumulationMode.ACCUMULATING,
-        )
-        | "ComputeMetrics" >> ComputeMetrics()
+        | "SportsTrackerMotivation"
+        >> SportTrackerMotivation(short_duration=20, long_duration=100)
         | "WriteNotifications"
-        >> WriteMetricsToKafka(
+        >> WriteNotificationsToKafka(
             bootstrap_servers=os.getenv(
                 "BOOTSTRAP_SERVERS",
                 "host.docker.internal:29092",
