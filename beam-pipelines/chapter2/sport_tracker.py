@@ -17,7 +17,6 @@ from apache_beam.options.pipeline_options import SetupOptions
 
 from sport_tracker_utils import (
     Position,
-    Metric,
     ReadPositionsFromKafka,
     WriteMetricsToKafka,
 )
@@ -34,7 +33,7 @@ class ComputeMetrics(beam.PTransform):
                     distance += abs(p.spot - last.spot)
                     duration += p.timestamp - last.timestamp
                 last = p
-            return element[0], Metric(distance, duration)
+            return element[0], distance / duration if duration > 0 else 0
 
         return (
             pcoll | "GroupByKey" >> beam.GroupByKey() | "Compute" >> beam.Map(compute)

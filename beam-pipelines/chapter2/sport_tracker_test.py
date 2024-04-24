@@ -17,7 +17,7 @@ from apache_beam.transforms.trigger import (
 from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
-from sport_tracker_utils import Position, Metric, PreProcessInput
+from sport_tracker_utils import Position, PreProcessInput
 from sport_tracker import ComputeMetrics
 
 
@@ -35,7 +35,7 @@ def compute_matrics(key: str, positions: typing.List[Position]):
             distance += abs(int(p.spot) - int(last.spot))
             duration += float(p.timestamp) - float(last.timestamp)
         last = p
-    return key, Metric(distance, duration)
+    return key, distance / duration if duration > 0 else 0
 
 
 def compute_expected_metrics(lines: list):

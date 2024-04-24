@@ -39,32 +39,7 @@ class PositionCoder(beam.coders.Coder):
         return True
 
 
-class Metric(typing.NamedTuple):
-    distance: float
-    duration: int
-
-    def to_bytes(self):
-        return json.dumps(self._asdict()).encode("utf-8")
-
-    @classmethod
-    def from_bytes(cls, encoded: bytes):
-        d = json.loads(encoded.decode("utf-8"))
-        return cls(**d)
-
-
-class MetricCoder(beam.coders.Coder):
-    def encode(self, value: Metric):
-        return value.to_bytes()
-
-    def decode(self, encoded: bytes):
-        return Metric.from_bytes(encoded)
-
-    def is_deterministic(self) -> bool:
-        return True
-
-
 beam.coders.registry.register_coder(Position, PositionCoder)
-beam.coders.registry.register_coder(Metric, MetricCoder)
 
 
 class PreProcessInput(beam.PTransform):
@@ -123,7 +98,7 @@ class ReadPositionsFromKafka(beam.PTransform):
         )
 
 
-@beam.typehints.with_input_types(typing.Tuple[str, Metric])
+@beam.typehints.with_input_types(typing.Tuple[str, float])
 class WriteMetricsToKafka(beam.PTransform):
     def __init__(
         self,
@@ -138,19 +113,17 @@ class WriteMetricsToKafka(beam.PTransform):
         self.verbose = verbose
 
     def expand(self, pcoll: pvalue.PCollection):
-        def create_message(element: typing.Tuple[str, Metric]):
-            msg = json.dumps(
-                dict(zip(["user", "distance", "duration"], (element[0], *element[1])))
-            )
+        def create_message(element: typing.Tuple[str, float]):
+            msg = json.dumps(dict(zip(["user", "speed"], element)))
             if self.verbose:
                 print(msg)
             return "".encode("utf-8"), msg.encode("utf-8")
 
         return (
             pcoll
-            | "CreateMsg"
+            | "CreateMessage"
             >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
-            | "Write to Kafka"
+            | "WriteToKafka"
             >> kafka.WriteToKafka(
                 producer_config={"bootstrap.servers": self.boostrap_servers},
                 topic=self.topic,
