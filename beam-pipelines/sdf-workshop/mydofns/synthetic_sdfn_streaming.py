@@ -8,6 +8,7 @@ import apache_beam as beam
 import typing
 
 from apache_beam import RestrictionProvider
+from apache_beam.utils.timestamp import Duration
 from apache_beam.io.iobase import RestrictionTracker
 from apache_beam.io.restriction_trackers import OffsetRange, OffsetRestrictionTracker
 from apache_beam.io.watermark_estimators import WalltimeWatermarkEstimator
@@ -73,7 +74,11 @@ class GeneratePartitionsDoFn(beam.DoFn):
         # TODO
         # Calculate a random latest committed offset, between 0 and MAX_INITIAL_COMMITTED.
         # Then emit NUM_PARTIIONS partitions, with the last offset between the above number and INITIAL_MAX_SIZE
-        pass
+        for k in range(self.NUM_PARTITIONS):
+            committed = random.randint(0, self.MAX_INITIAL_COMMITTED)
+            size = random.randint(0, self.MAX_INITIAL_COMMITTED)
+            p = MyPartition(id=k, last_offset=size, committed_offset=committed)
+            yield p
 
 
 class ProcessPartitionsSplittableDoFn(beam.DoFn, RestrictionProvider):
@@ -84,48 +89,59 @@ class ProcessPartitionsSplittableDoFn(beam.DoFn, RestrictionProvider):
     MAX_EMPTY_POLLS = 10
 
     @beam.DoFn.unbounded_per_element()
-    def process(self,
-                element: MyPartition,
-                tracker: RestrictionTrackerView = beam.DoFn.RestrictionParam(),
-                wm_estim=beam.DoFn.WatermarkEstimatorParam(WalltimeWatermarkEstimator.default_provider()),
-                **unused_kwargs) -> typing.Iterable[typing.Tuple[int, str]]:
+    def process(
+        self,
+        element: MyPartition,
+        tracker: RestrictionTrackerView = beam.DoFn.RestrictionParam(),
+        wm_estim=beam.DoFn.WatermarkEstimatorParam(
+            WalltimeWatermarkEstimator.default_provider()
+        ),
+        **unused_kwargs,
+    ) -> typing.Iterable[str]:
         n_times_empty = 0
-        while True:
-            # Poll for new messages and process them
-            offset_to_process = None  # TODO: Grab some offsets from the partition
-            # TODO
 
-            # Code to add more messages to simulate real word scenarios
-            if offset_to_process is None:
-                logging.info(f" ** Partition {element.id}: Empty poll. Waiting")
-                n_times_empty += 1
+        # Poll for new messages and process them
+        offset_to_process: typing.Optional[int] = element.poll()
+        if offset_to_process is not None:
+            if tracker.try_claim(offset_to_process):
+                m = f"Partition: {element.id}, offset: {offset_to_process}, last: {element.size()}"
+                yield m
+                element.commit()
+            else:
+                return
 
-            # Simulate different scenarios:
+        # Code to add more messages to simulate real word scenarios
+        if offset_to_process is None:
+            logging.info(f" ** Partition {element.id}: Empty poll. Waiting")
+            n_times_empty += 1
 
-            # If the partition is exhausted and starving, add more messages
-            if n_times_empty > self.MAX_EMPTY_POLLS:
-                logging.info(f" ** Partition {element.id}: Waiting for too long. Adding more messages")
-                self._add_new_messages(element)
-                n_times_empty = 0
-            # Every once in a while (with probability PROB_NEW_MSGS), the partition will get new msgs, even if it
-            # is not fully processed yet.
-            elif random.random() <= self.PROB_NEW_MSGS:
-                logging.info(f" ** Partition {element.id}: Bingo! Adding more messages")
-                self._add_new_messages(element)
+        # Simulate different scenarios:
 
-            time.sleep(self.POLL_TIMEOUT)
+        # If the partition is exhausted and starving, add more messages
+        if n_times_empty > self.MAX_EMPTY_POLLS:
+            logging.info(
+                f" ** Partition {element.id}: Waiting for too long. Adding more messages"
+            )
+            self._add_new_messages(element)
+            n_times_empty = 0
+        # Every once in a while (with probability PROB_NEW_MSGS), the partition will get new msgs, even if it
+        # is not fully processed yet.
+        elif random.random() <= self.PROB_NEW_MSGS:
+            logging.info(f" ** Partition {element.id}: Bingo! Adding more messages")
+            self._add_new_messages(element)
+
+        tracker.defer_remainder(Duration.of(self.POLL_TIMEOUT))
 
     def _add_new_messages(self, element: MyPartition):
-        element.add_new_messages(random.randint(self.MIN_ADD_NEW_MSGS, self.MAX_ADD_NEW_MSGS))
+        element.add_new_messages(
+            random.randint(self.MIN_ADD_NEW_MSGS, self.MAX_ADD_NEW_MSGS)
+        )
 
     def create_tracker(self, restriction: OffsetRange) -> MyPartitionRestrictionTracker:
-        # TODO: create a tracker here
-        pass
+        return MyPartitionRestrictionTracker(restriction)
 
     def initial_restriction(self, element: MyPartition) -> OffsetRange:
-        # TODO: what's the initial restriction for a Kafka partition?
-        pass
+        return OffsetRange(element.get_committed_position() + 1, sys.maxsize)
 
     def restriction_size(self, element: MyPartition, restriction: OffsetRange) -> int:
-        # TODO: what's the size of this partition?
-        pass
+        return restriction.size()
