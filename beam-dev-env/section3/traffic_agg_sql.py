@@ -97,12 +97,12 @@ def run():
     )
     SELECT
         id AS event_id,
-        CAST(TUMBLE_START(ts, INTERVAL '10' SECOND) AS VARCHAR) AS window_start,
-        CAST(TUMBLE_END(ts, INTERVAL '10' SECOND) AS VARCHAR) AS window_end,
+        CAST(TUMBLE_START(ts, INTERVAL '20' SECOND) AS VARCHAR) AS window_start,
+        CAST(TUMBLE_END(ts, INTERVAL '20' SECOND) AS VARCHAR) AS window_end,
         COUNT(*) AS page_view
     FROM cte
     GROUP BY
-        TUMBLE(ts, INTERVAL '10' SECOND), id
+        TUMBLE(ts, INTERVAL '20' SECOND), id
     """
 
     p = beam.Pipeline(options=options)
@@ -122,7 +122,7 @@ def run():
             topics=["website-visit"],
         )
         | "Decode messages" >> beam.Map(decode_message)
-        | "Parse elements" >> beam.Map(parse_json).with_output_types(EventLog)
+        | "Parse elements" >> beam.Map(parse_json)
         | "Format timestamp" >> beam.Map(format_timestamp).with_output_types(EventLog)
         | "Count per minute" >> SqlTransform(query)
         | "To dictionary" >> beam.Map(lambda e: e._asdict())
