@@ -33,10 +33,6 @@ class UserTraffic(typing.NamedTuple):
     min_bytes: int
 
 
-beam.coders.registry.register_coder(EventLog, beam.coders.RowCoder)
-beam.coders.registry.register_coder(UserTraffic, beam.coders.RowCoder)
-
-
 def parse_json(element: str):
     row = json.loads(element)
     # lat/lng sometimes empty string

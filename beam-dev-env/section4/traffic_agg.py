@@ -26,9 +26,6 @@ class EventLog(typing.NamedTuple):
     event_ts: int
 
 
-beam.coders.registry.register_coder(EventLog, beam.coders.RowCoder)
-
-
 def decode_message(kafka_kv: tuple):
     return kafka_kv[1].decode("utf-8")
 

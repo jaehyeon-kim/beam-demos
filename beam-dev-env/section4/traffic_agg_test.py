@@ -19,11 +19,6 @@ def main(out=sys.stderr, verbosity=2):
 
 
 class TrafficWindowingTest(unittest.TestCase):
-    def get_ts(self, event: dict):
-        return datetime.datetime.strptime(
-            parse_json(event).event_datetime, "%Y-%m-%dT%H:%M:%S.%f"
-        ).timestamp()
-
     def test_windowing_behaviour(self):
         options = PipelineOptions()
         options.view_as(StandardOptions).streaming = True
