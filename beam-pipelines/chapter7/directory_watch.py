@@ -110,6 +110,8 @@ class DirectoryWatchWatermarkEstimatorProvider(WatermarkEstimatorProvider):
 
 
 class DirectoryWatchFn(beam.DoFn):
+    # TODO: add watermark_fn to completes the process function by advancing watermark to max timestamp
+    #       without such a funcition, the pipeline never completes and we cannot perform unit testing
     POLL_TIMEOUT = 1
 
     @beam.DoFn.unbounded_per_element()
