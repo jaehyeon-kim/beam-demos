@@ -1,13 +1,9 @@
 import os
-import json
 import typing
 
 import apache_beam as beam
 from apache_beam import RestrictionProvider
-from apache_beam.io.iobase import RestrictionTracker
 from apache_beam.io.restriction_trackers import OffsetRange, OffsetRestrictionTracker
-from apache_beam.runners.sdf_utils import RestrictionTrackerView
-from apache_beam.utils.timestamp import Timestamp
 
 
 class MyFile(typing.NamedTuple):
