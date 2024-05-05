@@ -34,7 +34,6 @@ def run():
         | beam.Create([os.path.join(PARENT_DIR, "inputs")])
         | beam.ParDo(DirectoryWatchFn())
         | beam.ParDo(ProcessFilesFn())
-        # | beam.Map(print)
     )
 
     logging.getLogger().setLevel(logging.WARN)

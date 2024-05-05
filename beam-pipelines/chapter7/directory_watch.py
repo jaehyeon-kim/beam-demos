@@ -76,7 +76,7 @@ class DirectoryWatchRestrictionTracker(RestrictionTracker):
         return
 
     def is_bounded(self):
-        return False
+        return True if self.restriction.finished else False
 
     def try_split(self, fraction_of_remainder):
         return self.restriction.as_primary(), self.restriction.as_residual()
@@ -110,7 +110,7 @@ class DirectoryWatchWatermarkEstimatorProvider(WatermarkEstimatorProvider):
 
 
 class DirectoryWatchFn(beam.DoFn):
-    POLL_TIMEOUT = 10
+    POLL_TIMEOUT = 1
 
     @beam.DoFn.unbounded_per_element()
     def process(

@@ -45,7 +45,6 @@ class ProcessFilesFn(beam.DoFn, RestrictionProvider):
         return OffsetRestrictionTracker(restriction)
 
     def initial_restriction(self, element: MyFile) -> OffsetRange:
-        print(f"initial restriction - {element}")
         return OffsetRange(start=element.start, stop=element.end)
 
     def restriction_size(self, element: MyFile, restriction: OffsetRange) -> int:
