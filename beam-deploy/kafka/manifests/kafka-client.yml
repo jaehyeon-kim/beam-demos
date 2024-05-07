@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kafka-producer
+    group: client
+  name: kafka-producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-producer
+  template:
+    metadata:
+      labels:
+        app: kafka-producer
+        group: client
+    spec:
+      containers:
+        - image: kafka-client:0.1.0
+          name: producer-container
+          args: ["python", "producer.py"]
+          env:
+            - name: BOOTSTRAP_SERVERS
+              value: demo-cluster-kafka-bootstrap:9092
+            - name: TOPIC_NAME
+              value: input-topic
+            - name: DELAY_SECONDS
+              value: "1"
+            - name: TZ
+              value: Australia/Sydney
+          resources: {}
+          imagePullPolicy: Never # shouldn't be Always
