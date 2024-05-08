@@ -1,9 +1,4 @@
-apache-beam[gcp,aws,azure,test,docs,interactive]==2.53.0
-jupyterlab~=4.1.2
-jupyterlab-code-formatter
-black
-isort
-ipdb
+apache-beam[test]==2.56.0
 faker
 kafka-python
 grpcio~=1.62.1
