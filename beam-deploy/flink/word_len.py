@@ -1,5 +1,7 @@
 import os
 import re
+import json
+import datetime
 import logging
 import typing
 
@@ -10,9 +12,15 @@ from pyflink.datastream import (
     RuntimeExecutionMode,
 )
 from pyflink.common.typeinfo import Types
-from pyflink.datastream.functions import AggregateFunction
-from pyflink.datastream.window import SlidingEventTimeWindows, Time
-from pyflink.datastream.connectors.kafka import KafkaSource, KafkaOffsetsInitializer
+from pyflink.datastream.functions import ProcessAllWindowFunction
+from pyflink.datastream.window import TumblingProcessingTimeWindows, Time, TimeWindow
+from pyflink.datastream.connectors.kafka import (
+    KafkaSource,
+    KafkaOffsetsInitializer,
+    KafkaSink,
+    KafkaRecordSerializationSchema,
+    DeliveryGuarantee,
+)
 from pyflink.common.serialization import SimpleStringSchema
 
 
@@ -21,74 +29,49 @@ def tokenize(element: str):
         yield word
 
 
-class WordAccum(typing.NamedTuple):
-    length: int
-    count: int
+def create_message(element: typing.Tuple[str, str, float]):
+    return json.dumps(dict(zip(["window_start", "window_end", "avg_len"], element)))
 
 
-class AverageFn(AggregateFunction):
-    def create_accumulator(self):
-        return WordAccum(length=0, count=0)
-
-    def add(self, value: WordAccum, accumulator: WordAccum):
-        length, count = tuple(accumulator)
-        return WordAccum(length=length + len(value), count=count + 1)
-
-    def merge(self, acc_a: WordAccum, acc_b: WordAccum):
-        return WordAccum(
-            length=acc_a.length + acc_b.length, count=acc_a.count + acc_b.count
+class AverageWindowFunction(ProcessAllWindowFunction):
+    def process(
+        self, context: ProcessAllWindowFunction.Context, elements: typing.Iterable[str]
+    ) -> typing.Iterable[typing.Tuple[str, str, float]]:
+        window: TimeWindow = context.window()
+        window_start = datetime.datetime.fromtimestamp(window.start // 1000).isoformat(
+            timespec="seconds"
         )
-
-    def get_result(self, accumulator: WordAccum):
-        length, count = tuple(accumulator)
-        return length / count if count else float("NaN")
+        window_end = datetime.datetime.fromtimestamp(window.end // 1000).isoformat(
+            timespec="seconds"
+        )
+        length, count = 0, 0
+        for e in elements:
+            length += len(e)
+            count += 1
+        result = window_start, window_end, length / count if count else float("NaN")
+        logging.info(f"AverageWindowFunction: result - {result}")
+        yield result
 
 
 def define_workflow(source_system: DataStream):
     return (
         source_system.flat_map(tokenize)
-        .window_all(SlidingEventTimeWindows.of(Time.seconds(2), Time.seconds(1)))
-        .aggregate(
-            AverageFn(),
-            output_type=Types.FLOAT(),
-        )
+        .window_all(TumblingProcessingTimeWindows.of(Time.seconds(5)))
+        .process(AverageWindowFunction())
     )
 
-
-RUNTIME_ENV = os.getenv("RUNTIME_ENV", "local")
-BOOTSTRAP_SERVERS = os.getenv("BOOTSTRAP_SERVERS", "localhost:29092")
-INPUT_TOPIC = os.getenv("INPUT_TOPIC", "input-topic")
-GROUP_ID = os.getenv("GROUP_ID", "flink-word-len")
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:%(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-
-    logging.info(
-        f"RUNTIME_ENV - {RUNTIME_ENV}, BOOTSTRAP_SERVERS - {BOOTSTRAP_SERVERS}"
-    )
-
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_runtime_mode(RuntimeExecutionMode.STREAMING)
     env.enable_checkpointing(5000)
-    # env.set_parallelism(5)
-    if RUNTIME_ENV == "local":
-        CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
-        jar_files = ["flink-sql-connector-kafka-1.16.2.jar"]
-        jar_paths = tuple(
-            [f"file://{os.path.join(CURRENT_DIR, name)}" for name in jar_files]
-        )
-        logging.info(f"adding local jars - {', '.join(jar_files)}")
-        env.add_jars(*jar_paths)
+    env.set_parallelism(3)
 
     input_source = (
         KafkaSource.builder()
-        .set_bootstrap_servers(BOOTSTRAP_SERVERS)
-        .set_topics(INPUT_TOPIC)
-        .set_group_id(GROUP_ID)
+        .set_bootstrap_servers(os.getenv("BOOTSTRAP_SERVERS", "localhost:29092"))
+        .set_topics(os.getenv("INPUT_TOPIC", "input-topic"))
+        .set_group_id(os.getenv("GROUP_ID", "flink-word-len"))
         .set_starting_offsets(KafkaOffsetsInitializer.latest())
         .set_value_only_deserializer(SimpleStringSchema())
         .build()
@@ -98,8 +81,21 @@ if __name__ == "__main__":
         input_source, WatermarkStrategy.no_watermarks(), "input_source"
     )
 
-    output_stream = define_workflow(input_stream)
+    output_sink = (
+        KafkaSink.builder()
+        .set_bootstrap_servers(os.getenv("BOOTSTRAP_SERVERS", "localhost:29092"))
+        .set_record_serializer(
+            KafkaRecordSerializationSchema.builder()
+            .set_topic(os.getenv("OUTPUT_TOPIC", "output-topic-flink"))
+            .set_value_serialization_schema(SimpleStringSchema())
+            .build()
+        )
+        .set_delivery_guarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+        .build()
+    )
 
-    output_stream.print()
+    define_workflow(input_stream).map(
+        create_message, output_type=Types.STRING()
+    ).sink_to(output_sink).name("output_sink")
 
     env.execute("avg-word-length-flink")

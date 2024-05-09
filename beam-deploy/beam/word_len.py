@@ -8,7 +8,7 @@ import typing
 import apache_beam as beam
 from apache_beam import pvalue
 from apache_beam.io import kafka
-from apache_beam.transforms.window import SlidingWindows
+from apache_beam.transforms.window import FixedWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
@@ -82,7 +82,7 @@ class ReadWordsFromKafka(beam.PTransform):
             >> kafka.ReadFromKafka(
                 consumer_config={
                     "bootstrap.servers": self.boostrap_servers,
-                    "auto.offset.reset": "earliest",
+                    "auto.offset.reset": "latest",
                     # "enable.auto.commit": "true",
                     "group.id": self.group_id,
                 },
@@ -99,10 +99,7 @@ class CalculateAvgWordLen(beam.PTransform):
     def expand(self, input: pvalue.PCollection):
         return (
             input
-            | "Windowing"
-            >> beam.WindowInto(
-                SlidingWindows(size=10, period=5),
-            )
+            | "Windowing" >> beam.WindowInto(FixedWindows(size=5))
             | "GetAvgWordLength" >> beam.CombineGlobally(AverageFn()).without_defaults()
         )
 
@@ -186,7 +183,7 @@ def run():
         )
     )
 
-    logging.getLogger().setLevel(logging.WARN)
+    logging.getLogger().setLevel(logging.INFO)
     logging.info("Building pipeline ...")
 
     p.run().wait_until_finish()

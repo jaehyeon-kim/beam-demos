@@ -1,14 +1,17 @@
-FROM flink:1.16
+FROM flink:1.17
 
 ARG PYTHON_VERSION
-ENV PYTHON_VERSION=${PYTHON_VERSION:-3.8.18}
+ENV PYTHON_VERSION=${PYTHON_VERSION:-3.10.13}
 ARG BEAM_VERSION
-ENV BEAM_VERSION=${FLINK_VERSION:-2.53.0}
+ENV BEAM_VERSION=${FLINK_VERSION:-2.56.0}
 
-RUN wget -P /opt/flink/lib/ https://repo.maven.apache.org/maven2/org/apache/flink/flink-connector-kafka/$FLINK_VERSION/flink-connector-kafka-$FLINK_VERSION.jar; \
-  wget -P /opt/flink/lib/ https://repo.maven.apache.org/maven2/org/apache/kafka/kafka-clients/3.2.3/kafka-clients-3.2.3.jar; \
-  wget -P /opt/flink/lib/ https://repo.maven.apache.org/maven2/org/apache/flink/flink-sql-connector-kafka/$FLINK_VERSION/flink-sql-connector-kafka-$FLINK_VERSION.jar;
+## install java SDK
+COPY --from=apache/beam_java8_sdk:2.56.0 /opt/apache/beam/ /opt/apache/beam_java/
 
+## install python SDK
+COPY --from=apache/beam_python3.8_sdk:2.56.0 /opt/apache/beam/ /opt/apache/beam_python/
+
+## install python
 RUN apt-get update -y && \
   apt-get install -y build-essential libssl-dev zlib1g-dev libbz2-dev libffi-dev liblzma-dev && \
   wget https://www.python.org/ftp/python/${PYTHON_VERSION}/Python-${PYTHON_VERSION}.tgz && \
@@ -23,5 +26,5 @@ RUN apt-get update -y && \
   apt-get clean && \
   rm -rf /var/lib/apt/lists/*
 
-# install pip packages
+## install pip packages
 RUN pip3 install apache-beam==${BEAM_VERSION}
