@@ -88,6 +88,7 @@ class ReadWordsFromKafka(beam.PTransform):
                 },
                 topics=self.topics,
                 timestamp_policy=kafka.ReadFromKafka.create_time_policy,
+                commit_offset_in_finalize=True,
                 expansion_service=self.expansion_service,
             )
             | "DecodeMessage" >> beam.Map(decode_message)
@@ -139,26 +140,45 @@ class WriteWordLenToKafka(beam.PTransform):
         )
 
 
-def run():
+def run(args=None):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
     parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
-    opts = parser.parse_args()
-    print(opts)
+    parser.add_argument(
+        "--compile",
+        action="store_true",
+        default="Flag to indicate whether to use an own local cluster",
+    )
+    opts, _ = parser.parse_known_args(args)
 
     pipeline_opts = {
-        "runner": "FlinkRunner",
+        "runner": opts.runner,
         "job_name": "avg-word-length-beam",
-        "environment_type": "LOOPBACK",
         "streaming": True,
-        "experiments": [
-            "use_deprecated_read"
-        ],  ## https://github.com/apache/beam/issues/20979
+        "environment_type": "PROCESS" if opts.compile else "LOOPBACK",
         "checkpointing_interval": "60000",
+        # "flink_master": "localhost:8081",
     }
+
+    expansion_service = None
+    if pipeline_opts["environment_type"] == "PROCESS":
+        pipeline_opts = {
+            **pipeline_opts,
+            **{
+                "environment_config": {"command": "/opt/apache/beam_python/boot"},
+                "flink_submit_uber_jar": True,
+            },
+        }
+        expansion_service = kafka.default_io_expansion_service(
+            append_args=[
+                "--defaultEnvironmentType=PROCESS",
+                '--defaultEnvironmentConfig={"command":"/opt/apache/beam_java/boot"}',
+                "--experiments=use_deprecated_read",  # https://github.com/apache/beam/issues/20979
+            ]
+        )
     print(pipeline_opts)
     options = PipelineOptions([], **pipeline_opts)
     # Required, else it will complain that when importing worker functions
-    options.view_as(SetupOptions).save_main_session = True
+    # options.view_as(SetupOptions).save_main_session = True
 
     p = beam.Pipeline(options=options)
     (
@@ -171,6 +191,7 @@ def run():
             ),
             topics=[os.getenv("INPUT_TOPIC", "input-topic")],
             group_id=os.getenv("GROUP_ID", "beam-word-len"),
+            expansion_service=expansion_service,
         )
         | "CalculateAvgWordLen" >> CalculateAvgWordLen()
         | "WriteWordLenToKafka"
@@ -180,13 +201,15 @@ def run():
                 "host.docker.internal:29092",
             ),
             topic=os.getenv("OUTPUT_TOPIC", "output-topic-beam"),
+            expansion_service=expansion_service,
         )
     )
 
     logging.getLogger().setLevel(logging.INFO)
     logging.info("Building pipeline ...")
 
-    p.run().wait_until_finish()
+    p.run()
+    # p.run().wait_until_finish()
 
 
 if __name__ == "__main__":
