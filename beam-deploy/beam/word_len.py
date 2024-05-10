@@ -144,7 +144,7 @@ def run(args=None):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
     parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
     parser.add_argument(
-        "--compile",
+        "--deploy",
         action="store_true",
         default="Flag to indicate whether to use an own local cluster",
     )
@@ -154,62 +154,58 @@ def run(args=None):
         "runner": opts.runner,
         "job_name": "avg-word-length-beam",
         "streaming": True,
-        "environment_type": "PROCESS" if opts.compile else "LOOPBACK",
+        "environment_type": "EXTERNAL" if opts.deploy is True else "LOOPBACK",
         "checkpointing_interval": "60000",
-        # "flink_master": "localhost:8081",
     }
 
     expansion_service = None
-    if pipeline_opts["environment_type"] == "PROCESS":
+    if pipeline_opts["environment_type"] == "EXTERNAL":
         pipeline_opts = {
             **pipeline_opts,
             **{
-                "environment_config": {"command": "/opt/apache/beam_python/boot"},
+                "environment_config": "localhost:50000",
                 "flink_submit_uber_jar": True,
             },
         }
         expansion_service = kafka.default_io_expansion_service(
             append_args=[
                 "--defaultEnvironmentType=PROCESS",
-                '--defaultEnvironmentConfig={"command":"/opt/apache/beam_java/boot"}',
+                '--defaultEnvironmentConfig={"command":"/opt/apache/beam/boot"}',
                 "--experiments=use_deprecated_read",  # https://github.com/apache/beam/issues/20979
             ]
         )
     print(pipeline_opts)
     options = PipelineOptions([], **pipeline_opts)
     # Required, else it will complain that when importing worker functions
-    # options.view_as(SetupOptions).save_main_session = True
+    options.view_as(SetupOptions).save_main_session = True
 
-    p = beam.Pipeline(options=options)
-    (
-        p
-        | "ReadWordsFromKafka"
-        >> ReadWordsFromKafka(
-            bootstrap_servers=os.getenv(
-                "BOOTSTRAP_SERVERS",
-                "host.docker.internal:29092",
-            ),
-            topics=[os.getenv("INPUT_TOPIC", "input-topic")],
-            group_id=os.getenv("GROUP_ID", "beam-word-len"),
-            expansion_service=expansion_service,
+    with beam.Pipeline(options=options) as p:
+        (
+            p
+            | "ReadWordsFromKafka"
+            >> ReadWordsFromKafka(
+                bootstrap_servers=os.getenv(
+                    "BOOTSTRAP_SERVERS",
+                    "host.docker.internal:29092",
+                ),
+                topics=[os.getenv("INPUT_TOPIC", "input-topic")],
+                group_id=os.getenv("GROUP_ID", "beam-word-len"),
+                expansion_service=expansion_service,
+            )
+            | "CalculateAvgWordLen" >> CalculateAvgWordLen()
+            | "WriteWordLenToKafka"
+            >> WriteWordLenToKafka(
+                bootstrap_servers=os.getenv(
+                    "BOOTSTRAP_SERVERS",
+                    "host.docker.internal:29092",
+                ),
+                topic=os.getenv("OUTPUT_TOPIC", "output-topic-beam"),
+                expansion_service=expansion_service,
+            )
         )
-        | "CalculateAvgWordLen" >> CalculateAvgWordLen()
-        | "WriteWordLenToKafka"
-        >> WriteWordLenToKafka(
-            bootstrap_servers=os.getenv(
-                "BOOTSTRAP_SERVERS",
-                "host.docker.internal:29092",
-            ),
-            topic=os.getenv("OUTPUT_TOPIC", "output-topic-beam"),
-            expansion_service=expansion_service,
-        )
-    )
 
-    logging.getLogger().setLevel(logging.INFO)
-    logging.info("Building pipeline ...")
-
-    p.run()
-    # p.run().wait_until_finish()
+        logging.getLogger().setLevel(logging.INFO)
+        logging.info("Building pipeline ...")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,57 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: beam-word-len
+spec:
+  image: beam-python-example:1.17
+  imagePullPolicy: Never
+  flinkVersion: v1_17
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "5"
+  serviceAccount: flink
+  podTemplate:
+    spec:
+      containers:
+        - name: flink-main-container
+          env:
+            - name: BOOTSTRAP_SERVERS
+              value: demo-cluster-kafka-bootstrap:9092
+            - name: INPUT_TOPIC
+              value: input-topic
+            - name: GROUP_ID
+              value: beam-word-len
+            - name: OUTPUT_TOPIC
+              value: output-topic-beam
+          volumeMounts:
+            - mountPath: /opt/flink/log
+              name: flink-logs
+      volumes:
+        - name: flink-logs
+          emptyDir: {}
+  jobManager:
+    resource:
+      memory: "2048m"
+      cpu: 1
+  taskManager:
+    replicas: 2
+    resource:
+      memory: "2048m"
+      cpu: 1
+    podTemplate:
+      spec:
+        containers:
+          - name: python-worker-harness
+            image: apache/beam_python3.10_sdk:2.56.0
+            imagePullPolicy: Never
+            args: ["--worker_pool"]
+            ports:
+              - containerPort: 50000
+
+  job:
+    jarURI: local:///opt/apache/beam/jars/beam-runners-flink-job-server.jar
+    entryClass: org.apache.beam.runners.flink.FlinkPortableClientEntryPoint
+    args:
+      - "--driver-cmd"
+      - "python /opt/flink/app/word_len.py --deploy"
+    parallelism: 3
+    upgradeMode: stateless

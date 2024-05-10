@@ -3,13 +3,15 @@ FROM flink:1.17
 ARG PYTHON_VERSION
 ENV PYTHON_VERSION=${PYTHON_VERSION:-3.10.13}
 ARG BEAM_VERSION
-ENV BEAM_VERSION=${FLINK_VERSION:-2.56.0}
+ENV BEAM_VERSION=${BEAM_VERSION:-2.56.0}
 
-## install java SDK
-COPY --from=apache/beam_java8_sdk:2.56.0 /opt/apache/beam/ /opt/apache/beam_java/
+## add java SDK and job server
+COPY --from=apache/beam_java8_sdk:2.56.0 /opt/apache/beam/ /opt/apache/beam/
 
-## install python SDK
-COPY --from=apache/beam_python3.8_sdk:2.56.0 /opt/apache/beam/ /opt/apache/beam_python/
+COPY --from=apache/beam_flink1.17_job_server:2.56.0  \
+  /opt/apache/beam/jars/beam-runners-flink-job-server.jar /opt/apache/beam/jars/beam-runners-flink-job-server.jar
+
+RUN chown -R flink:flink /opt/apache/beam
 
 ## install python
 RUN apt-get update -y && \
@@ -28,3 +30,7 @@ RUN apt-get update -y && \
 
 ## install pip packages
 RUN pip3 install apache-beam==${BEAM_VERSION}
+
+## copy pipeline source
+RUN mkdir /opt/flink/app
+COPY word_len.py /opt/flink/app/

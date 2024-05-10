@@ -5,7 +5,7 @@ metadata:
     app: kafka-ui
   name: kafka-ui
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
     - port: 8080
       targetPort: 8080
