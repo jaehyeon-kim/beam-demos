@@ -155,7 +155,7 @@ def run(args=None):
         "runner": opts.runner,
         "job_name": "avg-word-length-beam",
         "streaming": True,
-        "environment_type": "EXTERNAL" if opts.deploy is True else "LOOPBACK",
+        "environment_type": "PROCESS" if opts.deploy is True else "LOOPBACK",
         "checkpointing_interval": "60000",
     }
 
