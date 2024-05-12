@@ -21,6 +21,22 @@ class WordAccum(typing.NamedTuple):
 beam.coders.registry.register_coder(WordAccum, beam.coders.RowCoder)
 
 
+def decode_message(kafka_kv: tuple, verbose: bool = False):
+    if verbose:
+        print(kafka_kv)
+    return kafka_kv[1].decode("utf-8")
+
+
+def tokenize(element: str):
+    return re.findall(r"[A-Za-z\']+", element)
+
+
+def create_message(element: typing.Tuple[str, str, float]):
+    msg = json.dumps(dict(zip(["window_start", "window_end", "avg_len"], element)))
+    print(msg)
+    return "".encode("utf-8"), msg.encode("utf-8")
+
+
 class AverageFn(beam.CombineFn):
     def create_accumulator(self):
         return WordAccum(length=0, count=0)
@@ -68,14 +84,6 @@ class ReadWordsFromKafka(beam.PTransform):
         self.expansion_service = expansion_service
 
     def expand(self, input: pvalue.PBegin):
-        def decode_message(kafka_kv: tuple):
-            if self.verbose:
-                print(kafka_kv)
-            return kafka_kv[1].decode("utf-8")
-
-        def tokenize(element: str):
-            return re.findall(r"[A-Za-z\']+", element)
-
         return (
             input
             | "ReadFromKafka"
@@ -119,13 +127,6 @@ class WriteWordLenToKafka(beam.PTransform):
         self.expansion_service = expansion_service
 
     def expand(self, input: pvalue.PCollection):
-        def create_message(element: typing.Tuple[str, str, float]):
-            msg = json.dumps(
-                dict(zip(["window_start", "window_end", "avg_len"], element))
-            )
-            print(msg)
-            return "".encode("utf-8"), msg.encode("utf-8")
-
         return (
             input
             | "AddWindowTS" >> beam.ParDo(AddWindowTS())
@@ -159,18 +160,20 @@ def run(args=None):
     }
 
     expansion_service = None
-    if pipeline_opts["environment_type"] == "EXTERNAL":
+    if opts.deploy is True:
         pipeline_opts = {
             **pipeline_opts,
             **{
-                "environment_config": "localhost:50000",
+                "environment_config": json.dumps(
+                    {"command": "/opt/apache/beam_python/boot"}
+                ),
                 "flink_submit_uber_jar": True,
             },
         }
         expansion_service = kafka.default_io_expansion_service(
             append_args=[
                 "--defaultEnvironmentType=PROCESS",
-                '--defaultEnvironmentConfig={"command":"/opt/apache/beam/boot"}',
+                '--defaultEnvironmentConfig={"command": "/opt/apache/beam/boot"}',
                 "--experiments=use_deprecated_read",  # https://github.com/apache/beam/issues/20979
             ]
         )

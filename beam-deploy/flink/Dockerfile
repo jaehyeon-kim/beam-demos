@@ -26,3 +26,8 @@ RUN apt-get update -y && \
 
 ## install pip packages
 RUN pip3 install apache-flink==${FLINK_VERSION}
+
+## add python script
+USER flink
+RUN mkdir /opt/flink/usrlib
+ADD word_len.py /opt/flink/usrlib/word_len.py

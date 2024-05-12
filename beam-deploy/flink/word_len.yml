@@ -1,9 +1,9 @@
 apiVersion: flink.apache.org/v1beta1
 kind: FlinkDeployment
 metadata:
-  name: beam-word-len
+  name: flink-word-len
 spec:
-  image: beam-python-example:1.17
+  image: flink-python-example:1.17
   imagePullPolicy: Never
   flinkVersion: v1_17
   flinkConfiguration:
@@ -19,13 +19,13 @@ spec:
             - name: INPUT_TOPIC
               value: input-topic
             - name: GROUP_ID
-              value: beam-word-len
+              value: flink-word-len
             - name: OUTPUT_TOPIC
-              value: output-topic-beam
+              value: output-topic-flink
           volumeMounts:
             - mountPath: /opt/flink/log
               name: flink-logs
-            - mountPath: /tmp/beam-artifact-staging
+            - mountPath: /tmp/flink-artifact-staging
               name: flink-staging
       volumes:
         - name: flink-logs
@@ -42,10 +42,14 @@ spec:
       memory: "2048m"
       cpu: 1
   job:
-    jarURI: local:///opt/apache/beam/jars/beam-runners-flink-job-server.jar
-    entryClass: org.apache.beam.runners.flink.FlinkPortableClientEntryPoint
+    jarURI: local:///opt/flink/opt/flink-python-1.17.2.jar
+    entryClass: "org.apache.flink.client.python.PythonDriver"
     args:
-      - "--driver-cmd"
-      - "python /opt/flink/usrlib/word_len.py --deploy"
+      [
+        "-pyclientexec",
+        "/usr/local/bin/python3",
+        "-py",
+        "/opt/flink/usrlib/word_len.py",
+      ]
     parallelism: 3
     upgradeMode: stateless

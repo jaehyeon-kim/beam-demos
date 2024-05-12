@@ -13,6 +13,8 @@ kubectl create -f kafka/manifests/strimzi-cluster-operator-$STRIMZI_VERSION.yaml
 kubectl create -f kafka/manifests/kafka-cluster.yaml
 kubectl create -f kafka/manifests/kafka-ui.yaml
 
+# kubectl get all -l app.kubernetes.io/instance=demo-cluster
+
 ## local test
 kubectl port-forward svc/kafka-ui 8080
 kubectl port-forward svc/demo-cluster-kafka-external-bootstrap 29092
@@ -40,15 +42,19 @@ kubectl create -f https://github.com/jetstack/cert-manager/releases/download/v1.
 helm repo add flink-operator-repo https://downloads.apache.org/flink/flink-kubernetes-operator-1.8.0/
 helm install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator
 
-kubectl create -f https://raw.githubusercontent.com/apache/flink-kubernetes-operator/release-1.8/examples/basic.yaml
-kubectl logs -f deploy/basic-example
-kubectl port-forward svc/basic-example-rest 8081
-kubectl delete flinkdeployment/basic-example
-
-kubectl create -f word_len.yml
+## beam example
+# kubectl get all -l app=beam-word-len
+kubectl create -f beam/word_len.yml
 kubectl logs -f deploy/beam-word-len
 kubectl port-forward svc/beam-word-len-rest 8081
 kubectl delete flinkdeployment/beam-word-len
+
+## flink example
+# kubectl get all -l app=flink-word-len
+kubectl create -f flink/word_len.yml
+kubectl logs -f deploy/flink-word-len
+kubectl port-forward svc/flink-word-len-rest 8081
+kubectl delete flinkdeployment/flink-word-len
 
 #### delete minikube
 minikube delete
