@@ -5,7 +5,11 @@ metadata:
 spec:
   kafka:
     version: 3.5.2
-    replicas: 2
+    replicas: 1
+    resources:
+      requests:
+        memory: "2048m"
+        cpu: 2
     listeners:
       - name: plain
         port: 9092
