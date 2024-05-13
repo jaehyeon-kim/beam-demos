@@ -2,6 +2,8 @@ FROM flink:1.17
 
 ARG PYTHON_VERSION
 ENV PYTHON_VERSION=${PYTHON_VERSION:-3.10.13}
+ARG FLINK_VERSION
+ENV FLINK_VERSION=${BEAM_VERSION:-1.17}
 ARG BEAM_VERSION
 ENV BEAM_VERSION=${BEAM_VERSION:-2.56.0}
 
@@ -11,6 +13,11 @@ COPY --from=apache/beam_java11_sdk:2.56.0 /opt/apache/beam/ /opt/apache/beam/
 COPY --from=apache/beam_flink1.17_job_server:2.56.0  \
   /opt/apache/beam/jars/beam-runners-flink-job-server.jar /opt/apache/beam/jars/beam-runners-flink-job-server.jar
 RUN chown -R flink:flink /opt/apache/beam_python && chown -R flink:flink /opt/apache/beam
+
+## cache job server jar
+RUN mkdir -p /opt/flink/.apache_beam/cache/jars \
+  && cp /opt/apache/beam/jars/beam-runners-flink-job-server.jar /opt/flink/.apache_beam/cache/jars/beam-runners-flink-${FLINK_VERSION}-job-server-${BEAM_VERSION}.jar \
+  && chown -R flink:flink /opt/flink/.apache_beam
 
 ## install python
 RUN apt-get update -y && \
