@@ -34,13 +34,13 @@ spec:
           emptyDir: {}
   jobManager:
     resource:
-      memory: "2048m"
-      cpu: 2
+      memory: "6144Mi"
+      cpu: 3
   taskManager:
     replicas: 1
     resource:
-      memory: "2048m"
-      cpu: 2
+      memory: "6144Mi"
+      cpu: 3
   job:
     jarURI: local:///opt/apache/beam/jars/beam-runners-flink-job-server.jar
     entryClass: org.apache.beam.runners.flink.FlinkPortableClientEntryPoint

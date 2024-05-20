@@ -8,8 +8,11 @@ spec:
     replicas: 1
     resources:
       requests:
-        memory: "2048m"
-        cpu: 2
+        memory: 256Mi
+        cpu: 250m
+      limits:
+        memory: 512Mi
+        cpu: 500m
     listeners:
       - name: plain
         port: 9092
@@ -37,6 +40,13 @@ spec:
       num.partitions: 3
   zookeeper:
     replicas: 1
+    resources:
+      requests:
+        memory: 256Mi
+        cpu: 250m
+      limits:
+        memory: 512Mi
+        cpu: 500m
     storage:
       type: persistent-claim
       size: 10Gi
