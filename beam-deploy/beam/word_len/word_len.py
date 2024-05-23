@@ -1,4 +1,3 @@
-import os
 import json
 import argparse
 import re
@@ -141,36 +140,51 @@ class WriteWordLenToKafka(beam.PTransform):
         )
 
 
-def run(args=None):
+def run(argv=None, save_main_session=True):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
-    parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
     parser.add_argument(
         "--deploy",
+        dest="deploy",
         action="store_true",
-        default="Flag to indicate whether to use an own local cluster",
+        default="Flag to indicate whether to deploy to a cluster",
     )
-    opts, _ = parser.parse_known_args(args)
+    parser.add_argument(
+        "--bootstrap_servers",
+        dest="bootstrap",
+        default="host.docker.internal:29092",
+        help="Kafka bootstrap server addresses",
+    )
+    parser.add_argument(
+        "--input_topic",
+        dest="input",
+        default="input-topic",
+        help="Kafka input topic name",
+    )
+    parser.add_argument(
+        "--output_topic",
+        dest="output",
+        default="output-topic-beam",
+        help="Kafka output topic name",
+    )
+    parser.add_argument(
+        "--group_id",
+        dest="group",
+        default="beam-word-len",
+        help="Kafka output group ID",
+    )
 
-    pipeline_opts = {
-        "runner": opts.runner,
-        "job_name": "avg-word-length-beam",
-        "streaming": True,
-        "flink_version": "1.17",
-        "environment_type": "PROCESS" if opts.deploy is True else "LOOPBACK",
-        "checkpointing_interval": "60000",
-    }
+    known_args, pipeline_args = parser.parse_known_args(argv)
+
+    print(known_args)
+    print(pipeline_args)
+
+    # We use the save_main_session option because one or more DoFn's in this
+    # workflow rely on global context (e.g., a module imported at module level).
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(SetupOptions).save_main_session = save_main_session
 
     expansion_service = None
-    if opts.deploy is True:
-        pipeline_opts = {
-            **pipeline_opts,
-            **{
-                "environment_config": json.dumps(
-                    {"command": "/opt/apache/beam_python/boot"}
-                ),
-                "flink_submit_uber_jar": True,
-            },
-        }
+    if known_args.deploy is True:
         expansion_service = kafka.default_io_expansion_service(
             append_args=[
                 "--defaultEnvironmentType=PROCESS",
@@ -178,37 +192,27 @@ def run(args=None):
                 "--experiments=use_deprecated_read",  # https://github.com/apache/beam/issues/20979
             ]
         )
-    print(pipeline_opts)
-    options = PipelineOptions([], **pipeline_opts)
-    # Required, else it will complain that when importing worker functions
-    options.view_as(SetupOptions).save_main_session = True
 
-    with beam.Pipeline(options=options) as p:
+    with beam.Pipeline(options=pipeline_options) as p:
         (
             p
             | "ReadWordsFromKafka"
             >> ReadWordsFromKafka(
-                bootstrap_servers=os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                ),
-                topics=[os.getenv("INPUT_TOPIC", "input-topic")],
-                group_id=os.getenv("GROUP_ID", "beam-word-len"),
+                bootstrap_servers=known_args.bootstrap,
+                topics=[known_args.input],
+                group_id=known_args.group,
                 expansion_service=expansion_service,
             )
             | "CalculateAvgWordLen" >> CalculateAvgWordLen()
             | "WriteWordLenToKafka"
             >> WriteWordLenToKafka(
-                bootstrap_servers=os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                ),
-                topic=os.getenv("OUTPUT_TOPIC", "output-topic-beam"),
+                bootstrap_servers=known_args.bootstrap,
+                topic=known_args.output,
                 expansion_service=expansion_service,
             )
         )
 
-        logging.getLogger().setLevel(logging.INFO)
+        logging.getLogger().setLevel(logging.DEBUG)
         logging.info("Building pipeline ...")
 
 

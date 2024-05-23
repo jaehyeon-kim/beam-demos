@@ -42,12 +42,34 @@ kubectl create -f https://github.com/jetstack/cert-manager/releases/download/v1.
 helm repo add flink-operator-repo https://downloads.apache.org/flink/flink-kubernetes-operator-1.8.0/
 helm install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator
 
+helm install -f beam/values.yml flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator
+
 ## beam example
 # kubectl get all -l app=beam-word-len
 kubectl create -f beam/word_len.yml
 kubectl logs -f deploy/beam-word-len
 kubectl port-forward svc/beam-word-len-rest 8081
 kubectl delete flinkdeployment/beam-word-len
+
+kubectl create -f beam/word_len_cluster.yml
+kubectl create -f beam/word_len_job.yml
+kubectl create -f beam/beam_wordcount.yml
+
+kubectl describe job beam-word-len-job
+kubectl describe job beam-word-len-job
+
+kubectl port-forward svc/beam-word-len-cluster-rest 8081
+kubectl describe flinkdeployment/beam-word-len-cluster
+kubectl describe flinksessionjobs beam-word-len-job
+
+kubectl describe job beam-word-len-job
+kubectl describe job beam-wordcount
+
+kubectl delete -f beam/word_len_job.yml
+kubectl delete -f beam/beam_wordcount.yml
+
+kubectl delete flinkdeployment/beam-word-len-cluster
+kubectl delete flinksessionjobs beam-word-len-job
 
 ## flink example
 # kubectl get all -l app=flink-word-len
