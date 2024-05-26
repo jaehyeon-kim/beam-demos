@@ -1,20 +1,20 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: beam-wordcount
+  name: word-count-job
 spec:
   template:
     metadata:
       labels:
-        app: beam-wordcount
+        app: word-count-job
     spec:
       containers:
-        - name: beam-wordcount
-          image: python-worker-harness:2.56.0
+        - name: word-count
+          image: beam-python-worker-harness:2.56.0
           command: ["python"]
           args:
             - "-m"
-            - "apache_beam.examples.wordcount"
+            - "wordcount.run"
             - "--runner=FlinkRunner"
             - "--flink_master=beam-word-len-cluster-rest:8081"
             - "--flink_submit_uber_jar"

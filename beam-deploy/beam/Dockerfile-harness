@@ -1,7 +1,0 @@
-FROM apache/beam_python3.10_sdk:2.56.0
-
-RUN apt-get update && apt-get install -y default-jdk
-
-COPY word_len /app/word_len
-
-ENV PYTHONPATH="$PYTHONPATH:/app"

@@ -10,7 +10,7 @@ spec:
     spec:
       containers:
         - name: beam-word-len-job
-          image: python-worker-harness:2.56.0
+          image: beam-python-worker-harness:2.56.0
           command: ["python"]
           args:
             - "-m"
@@ -19,7 +19,7 @@ spec:
             - "--bootstrap_servers=demo-cluster-kafka-bootstrap:9092"
             - "--runner=FlinkRunner"
             - "--job_name=beam-word-len"
-            - "--flink_master=beam-word-len-cluster-rest:8081"
+            - "--flink_master=word-len-cluster-rest:8081"
             - "--streaming"
             - "--flink_submit_uber_jar"
             - "--environment_type=EXTERNAL"

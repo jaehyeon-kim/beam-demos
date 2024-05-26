@@ -1,7 +1,7 @@
 apiVersion: flink.apache.org/v1beta1
 kind: FlinkDeployment
 metadata:
-  name: word-len-cluster
+  name: word-count-cluster
 spec:
   image: flink:1.16
   imagePullPolicy: IfNotPresent
@@ -37,10 +37,3 @@ spec:
             ports:
               - containerPort: 50000
                 name: harness-port
-            resources:
-              requests:
-                memory: 2048Mi
-                cpu: 2000m
-              limits:
-                memory: 2048Mi
-                cpu: 2000m

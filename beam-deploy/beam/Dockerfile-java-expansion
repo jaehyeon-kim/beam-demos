@@ -1,16 +1,9 @@
-FROM flink:1.16
+FROM apache/beam_java11_sdk:2.56.0
 
 ARG BEAM_VERSION
 ENV BEAM_VERSION=${BEAM_VERSION:-2.56.0}
 ENV REPO_BASE_URL=https://repo1.maven.org/maven2/org/apache/beam
 
-# # install docker
-# RUN apt-get update && apt-get install -y docker.io
-
-# # add flink user to docker group
-# RUN usermod -aG docker flink
-
-COPY --from=apache/beam_java11_sdk:2.56.0 /opt/apache/beam/ /opt/apache/beam/
 COPY --from=apache/beam_flink1.16_job_server:2.56.0  \
   /opt/apache/beam/jars/beam-runners-flink-job-server.jar /opt/apache/beam/jars/beam-runners-flink-job-server.jar
 RUN wget ${REPO_BASE_URL}/beam-sdks-java-io-expansion-service/${BEAM_VERSION}/beam-sdks-java-io-expansion-service-${BEAM_VERSION}.jar \

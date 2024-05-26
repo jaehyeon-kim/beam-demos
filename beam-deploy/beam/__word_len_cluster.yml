@@ -1,0 +1,191 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-config
+  labels:
+    app: flink
+data:
+  flink-conf.yaml: |+
+    jobmanager.rpc.address: flink-jobmanager
+    taskmanager.numberOfTaskSlots: 10
+    blob.server.port: 6124
+    jobmanager.rpc.port: 6123
+    taskmanager.rpc.port: 6122
+    queryable-state.proxy.ports: 6125
+    jobmanager.memory.process.size: 1600m
+    taskmanager.memory.process.size: 1728m
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+spec:
+  type: ClusterIP
+  ports:
+    - name: rpc
+      port: 6123
+    - name: blob-server
+      port: 6124
+    - name: webui
+      port: 8081
+  selector:
+    app: flink
+    component: jobmanager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      containers:
+        - name: jobmanager
+          image: beam-python-example:1.16
+          args: ["jobmanager"]
+          ports:
+            - containerPort: 6123
+              name: rpc
+            - containerPort: 6124
+              name: blob-server
+            - containerPort: 8081
+              name: webui
+          livenessProbe:
+            tcpSocket:
+              port: 6123
+            initialDelaySeconds: 30
+            periodSeconds: 60
+          volumeMounts:
+            - name: flink-config-volume
+              mountPath: /opt/flink/conf
+          securityContext:
+            runAsUser: 9999
+          resources:
+            requests:
+              memory: 1024Mi
+              cpu: 1000m
+            limits:
+              memory: 2048Mi
+              cpu: 2000m
+      volumes:
+        - name: flink-config-volume
+          configMap:
+            name: flink-config
+            items:
+              - key: flink-conf.yaml
+                path: flink-conf.yaml
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      containers:
+        # - name: docker
+        #   image: docker:24.0.5-dind
+        #   securityContext:
+        #     privileged: true
+        #   volumeMounts:
+        #     - name: dind-storage
+        #       mountPath: /var/lib/docker
+        #   env:
+        #     - name: DOCKER_TLS_CERTDIR
+        #       value: ""
+        #   resources:
+        #     requests:
+        #       cpu: 500m
+        #       memory: 256Mi
+        #     limits:
+        #       cpu: 1000m
+        #       memory: 1024Mi
+        - name: taskmanager
+          image: beam-python-example:1.16
+          args: ["taskmanager"]
+          ports:
+            - containerPort: 6122
+              name: rpc
+            - containerPort: 6125
+              name: query-state
+          # env:
+          #   - name: DOCKER_HOST
+          #     value: tcp://localhost:2375
+          livenessProbe:
+            tcpSocket:
+              port: 6122
+            initialDelaySeconds: 30
+            periodSeconds: 60
+          volumeMounts:
+            - name: flink-config-volume
+              mountPath: /opt/flink/conf/
+          securityContext:
+            runAsUser: 9999
+          resources:
+            requests:
+              memory: 1024Mi
+              cpu: 1000m
+            limits:
+              memory: 2048Mi
+              cpu: 2000m
+        - name: python-harness
+          image: beam-python-worker-harness:2.56.0
+          args: ["--worker_pool"]
+          ports:
+            - containerPort: 50000
+              name: harness-port
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 250m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+        # - name: expansion-service
+        #   image: beam-java-expansion-service:2.56.0
+        #   workingDir: /opt/apache/beam/jars
+        #   command: ["java"]
+        #   args:
+        #     - "-cp"
+        #     - "beam-runners-flink-job-server.jar:beam-sdks-java-io-expansion-service.jar:beam-sdks-java-io-kafka.jar:beam-sdks-java-extensions-schemaio-expansion-service.jar"
+        #     - "org.apache.beam.sdk.expansion.service.ExpansionService"
+        #     - "8096"
+        #     - "--defaultEnvironmentType=PROCESS"
+        #     - '--defaultEnvironmentConfig=''{"command": "/opt/apache/beam/boot"}'''
+        #     - "--experiments=use_deprecated_read"
+        #   ports:
+        #     - containerPort: 8096
+        #   resources:
+        #     requests:
+        #       memory: 256Mi
+        #       cpu: 250m
+        #     limits:
+        #       memory: 512Mi
+        #       cpu: 500m
+      volumes:
+        - name: dind-storage
+          emptyDir:
+        - name: flink-config-volume
+          configMap:
+            name: flink-config
+            items:
+              - key: flink-conf.yaml
+                path: flink-conf.yaml

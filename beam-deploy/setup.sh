@@ -37,20 +37,38 @@ kubectl delete -f kafka/manifests/kafka-client.yml
 kubectl delete -f kafka/manifests/strimzi-cluster-operator-$STRIMZI_VERSION.yaml
 
 #### flink
+## flink operator
 kubectl create -f https://github.com/jetstack/cert-manager/releases/download/v1.8.2/cert-manager.yaml
-
 helm repo add flink-operator-repo https://downloads.apache.org/flink/flink-kubernetes-operator-1.8.0/
 helm install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator
+# helm install -f beam/values.yml flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator
 
-helm install -f beam/values.yml flink-kubernetes-operator flink-operator-repo/flink-kubernetes-operator
+## beam word_count
+kubectl create -f beam/word_count_cluster.yml
+kubectl create -f beam/word_count_job.yml
+
+kubectl port-forward svc/beam-word-len-rest 8081
+
+kubectl delete -f beam/word_count_cluster.yml
+kubectl delete -f beam/word_count_job.yml
+
+## beam word_len
+kubectl create -f beam/word_len_cluster.yml
+kubectl create -f beam/word_len_job.yml
+
+kubectl port-forward svc/word-len-cluster-rest 8081
+
+kubectl delete -f beam/word_len_cluster.yml
+kubectl delete -f beam/word_len_job.yml
 
 ## beam example
 # kubectl get all -l app=beam-word-len
 kubectl create -f beam/word_len.yml
 kubectl logs -f deploy/beam-word-len
-kubectl port-forward svc/beam-word-len-rest 8081
+
 kubectl delete flinkdeployment/beam-word-len
 
+kubectl create -f beam/word_len_expansion.yml
 kubectl create -f beam/word_len_cluster.yml
 kubectl create -f beam/word_len_job.yml
 kubectl create -f beam/beam_wordcount.yml
@@ -65,6 +83,8 @@ kubectl describe flinksessionjobs beam-word-len-job
 kubectl describe job beam-word-len-job
 kubectl describe job beam-wordcount
 
+kubectl delete -f beam/word_len_expansion.yml
+kubectl delete -f beam/word_len_cluster.yml
 kubectl delete -f beam/word_len_job.yml
 kubectl delete -f beam/beam_wordcount.yml
 

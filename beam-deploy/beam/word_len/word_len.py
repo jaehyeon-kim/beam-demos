@@ -188,9 +188,9 @@ def run(argv=None, save_main_session=True):
         expansion_service = kafka.default_io_expansion_service(
             append_args=[
                 "--defaultEnvironmentType=PROCESS",
-                '--defaultEnvironmentConfig={"command": "/opt/apache/beam/boot"}',
+                '--defaultEnvironmentConfig={"command": "/opt/apache/beam_java/boot"}',
                 "--experiments=use_deprecated_read",  # https://github.com/apache/beam/issues/20979
-            ]
+            ],
         )
 
     with beam.Pipeline(options=pipeline_options) as p:
