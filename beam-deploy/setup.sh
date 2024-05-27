@@ -13,6 +13,16 @@ kubectl create -f kafka/manifests/strimzi-cluster-operator-$STRIMZI_VERSION.yaml
 kubectl create -f kafka/manifests/kafka-cluster.yaml
 kubectl create -f kafka/manifests/kafka-ui.yaml
 
+#### if kafka cluster gets pending due to waiting for a volume to be created ...
+## https://minikube.sigs.k8s.io/docs/tutorials/volume_snapshots_and_csi/
+## enable addons
+minikube addons enable volumesnapshots
+minikube addons enable csi-hostpath-driver
+## use it as a default storage class for the dynamic volume claims
+minikube addons disable storage-provisioner
+minikube addons disable default-storageclass
+kubectl patch storageclass csi-hostpath-sc -p '{"metadata": {"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+
 # kubectl get all -l app.kubernetes.io/instance=demo-cluster
 
 ## local test
