@@ -57,7 +57,7 @@ helm install flink-kubernetes-operator flink-operator-repo/flink-kubernetes-oper
 kubectl create -f beam/word_count_cluster.yml
 kubectl create -f beam/word_count_job.yml
 
-kubectl port-forward svc/beam-word-len-rest 8081
+kubectl port-forward svc/word-count-cluster-rest 8081
 
 kubectl delete -f beam/word_count_cluster.yml
 kubectl delete -f beam/word_count_job.yml

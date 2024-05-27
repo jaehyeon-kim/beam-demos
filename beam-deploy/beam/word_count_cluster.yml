@@ -3,8 +3,8 @@ kind: FlinkDeployment
 metadata:
   name: word-count-cluster
 spec:
-  image: flink:1.16
-  imagePullPolicy: IfNotPresent
+  image: beam-python-example:1.16
+  imagePullPolicy: Never
   flinkVersion: v1_16
   flinkConfiguration:
     taskmanager.numberOfTaskSlots: "10"
@@ -32,7 +32,8 @@ spec:
       spec:
         containers:
           - name: python-harness
-            image: beam-python-worker-harness:2.56.0
+            image: beam-python-harness:2.56.0
+            command: ["/opt/apache/beam/boot"]
             args: ["-worker_pool"]
             ports:
               - containerPort: 50000

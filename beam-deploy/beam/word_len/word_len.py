@@ -11,6 +11,20 @@ from apache_beam.transforms.window import FixedWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
+from apache_beam.transforms.external import JavaJarExpansionService
+
+
+def get_expansion_service(
+    jar="/opt/apache/beam/jars/beam-sdks-java-io-expansion-service.jar", args=None
+):
+    if args == None:
+        args = [
+            "--defaultEnvironmentType=PROCESS",
+            '--defaultEnvironmentConfig={"command": "/opt/apache/beam/boot"}',
+            "--experiments=use_deprecated_read",
+        ]
+    return JavaJarExpansionService(jar, ["{{PORT}}"] + args)
+
 
 class WordAccum(typing.NamedTuple):
     length: int
@@ -185,13 +199,14 @@ def run(argv=None, save_main_session=True):
 
     expansion_service = None
     if known_args.deploy is True:
-        expansion_service = kafka.default_io_expansion_service(
-            append_args=[
-                "--defaultEnvironmentType=PROCESS",
-                '--defaultEnvironmentConfig={"command": "/opt/apache/beam_java/boot"}',
-                "--experiments=use_deprecated_read",  # https://github.com/apache/beam/issues/20979
-            ],
-        )
+        expansion_service = get_expansion_service()
+        # expansion_service = kafka.default_io_expansion_service(
+        #     append_args=[
+        #         "--defaultEnvironmentType=PROCESS",
+        #         '--defaultEnvironmentConfig={"command": "/opt/apache/beam/boot"}',
+        #         "--experiments=use_deprecated_read",  # https://github.com/apache/beam/issues/20979
+        #     ],
+        # )
 
     with beam.Pipeline(options=pipeline_options) as p:
         (

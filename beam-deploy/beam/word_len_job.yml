@@ -1,16 +1,16 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: beam-word-len-job
+  name: word-len-job
 spec:
   template:
     metadata:
       labels:
-        app: beam-word-len-job
+        app: word-len-job
     spec:
       containers:
         - name: beam-word-len-job
-          image: beam-python-worker-harness:2.56.0
+          image: beam-python-harness:2.56.0
           command: ["python"]
           args:
             - "-m"
@@ -18,8 +18,8 @@ spec:
             - "--deploy"
             - "--bootstrap_servers=demo-cluster-kafka-bootstrap:9092"
             - "--runner=FlinkRunner"
-            - "--job_name=beam-word-len"
             - "--flink_master=word-len-cluster-rest:8081"
+            - "--job_name=beam-word-len"
             - "--streaming"
             - "--flink_submit_uber_jar"
             - "--environment_type=EXTERNAL"
