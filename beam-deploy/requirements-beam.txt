@@ -1,0 +1,3 @@
+apache-beam[test]==2.56.0
+faker
+kafka-python

@@ -1,0 +1,55 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: flink-word-len
+spec:
+  image: flink-python-example:1.17
+  imagePullPolicy: Never
+  flinkVersion: v1_17
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "5"
+  serviceAccount: flink
+  podTemplate:
+    spec:
+      containers:
+        - name: flink-main-container
+          env:
+            - name: BOOTSTRAP_SERVERS
+              value: demo-cluster-kafka-bootstrap:9092
+            - name: INPUT_TOPIC
+              value: input-topic
+            - name: GROUP_ID
+              value: flink-word-len
+            - name: OUTPUT_TOPIC
+              value: output-topic-flink
+          volumeMounts:
+            - mountPath: /opt/flink/log
+              name: flink-logs
+            - mountPath: /tmp/flink-artifact-staging
+              name: flink-staging
+      volumes:
+        - name: flink-logs
+          emptyDir: {}
+        - name: flink-staging
+          emptyDir: {}
+  jobManager:
+    resource:
+      memory: "2048m"
+      cpu: 1
+  taskManager:
+    replicas: 2
+    resource:
+      memory: "2048m"
+      cpu: 1
+  job:
+    jarURI: local:///opt/flink/opt/flink-python-1.17.2.jar
+    entryClass: "org.apache.flink.client.python.PythonDriver"
+    args:
+      [
+        "-pyclientexec",
+        "/usr/local/bin/python3",
+        "-py",
+        "/opt/flink/usrlib/word_len.py",
+      ]
+    parallelism: 3
+    upgradeMode: stateless

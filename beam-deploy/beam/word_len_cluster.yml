@@ -1,0 +1,39 @@
+apiVersion: flink.apache.org/v1beta1
+kind: FlinkDeployment
+metadata:
+  name: word-len-cluster
+spec:
+  image: beam-python-example:1.16
+  imagePullPolicy: Never
+  flinkVersion: v1_16
+  flinkConfiguration:
+    taskmanager.numberOfTaskSlots: "10"
+  serviceAccount: flink
+  podTemplate:
+    spec:
+      containers:
+        - name: flink-main-container
+          volumeMounts:
+            - mountPath: /opt/flink/log
+              name: flink-logs
+      volumes:
+        - name: flink-logs
+          emptyDir: {}
+  jobManager:
+    resource:
+      memory: "2048Mi"
+      cpu: 2
+  taskManager:
+    replicas: 1
+    resource:
+      memory: "2048Mi"
+      cpu: 2
+    podTemplate:
+      spec:
+        containers:
+          - name: python-harness
+            image: beam-python-harness:2.56.0
+            args: ["-worker_pool"]
+            ports:
+              - containerPort: 50000
+                name: harness-port
