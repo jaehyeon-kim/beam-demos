@@ -21,6 +21,7 @@ spec:
             - "--flink_master=word-len-cluster-rest:8081"
             - "--job_name=beam-word-len"
             - "--streaming"
+            - "--parallelism=3"
             - "--flink_submit_uber_jar"
             - "--environment_type=EXTERNAL"
             - "--environment_config=localhost:50000"
