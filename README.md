@@ -9,8 +9,15 @@ In this series of posts, we discuss local development of Apache Beam pipelines u
 - [Part 1 Pipeline, Notebook, SQL and DataFrame](https://jaehyeon.me/blog/2024-03-28-beam-local-dev-1/)
 - [Part 2 Batch Pipelines](https://jaehyeon.me/blog/2024-04-04-beam-local-dev-2)
 - [Part 3 Flink Runner](https://jaehyeon.me/blog/2024-04-18-beam-local-dev-3)
-- Part 4 Streaming Pipelines
-- Part 5 Testing Pipelines
+- [Part 4 Streaming Pipelines](https://jaehyeon.me/blog/2024-05-02-beam-local-dev-4/)
+- [Part 5 Testing Pipelines](https://jaehyeon.me/blog/2024-05-09-beam-local-dev-5/)
+
+### Deploy Python Stream Processing App on Kubernetes
+
+Flink Kubernetes Operator acts as a control plane to manage the complete deployment lifecycle of Apache Flink applications. With the operator, we can simplify deployment and management of Python stream processing applications. In this series, we discuss how to deploy a PyFlink application and Python Apache Beam pipeline on the Flink Runner on Kubernetes.
+
+- [Part 1 PyFlink Application](https://jaehyeon.me/blog/2024-05-30-beam-deploy-1/)
+- [Part 2 Beam Pipeline on Flink Runner](https://jaehyeon.me/blog/2024-06-06-beam-deploy-2/)
 
 ### Apache Beam by Examples
 
