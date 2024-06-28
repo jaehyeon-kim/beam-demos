@@ -43,6 +43,7 @@ fi
 ## 3. update file permission recursively
 ##  chmod -R +x flink-${FLINK_VERSION}/bin
 if [ ! -z $start_flink ] && [ $start_flink = true ]; then
-  FLINK_VERSION=1.18.1
+  FLINK_VERSION=${FLINK_VERSION:-1.18.1}
+  echo "start FLINK ${FLINK_VERSION}..."
   ${SCRIPT_DIR}/flink-${FLINK_VERSION}/bin/start-cluster.sh
 fi

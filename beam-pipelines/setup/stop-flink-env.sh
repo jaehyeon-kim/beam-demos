@@ -32,7 +32,8 @@ fi
 
 #### stop local flink cluster
 if [ ! -z $stop_flink ] && [ $stop_flink = true ]; then
-  FLINK_VERSION=1.18.1
+  FLINK_VERSION=${FLINK_VERSION:-1.18.1}
+  echo "stop FLINK ${FLINK_VERSION}..."
   ${SCRIPT_DIR}/flink-${FLINK_VERSION}/bin/stop-cluster.sh
 fi
 
