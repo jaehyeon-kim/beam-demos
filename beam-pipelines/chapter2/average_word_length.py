@@ -125,7 +125,10 @@ def run():
             # closing behaviour - EMIT_ALWAYS, on_time_behavior - FIRE_ALWAYS
         )
         | "Extract words" >> beam.FlatMap(tokenize)
-        | "Get avg word length" >> beam.CombineGlobally(AverageFn()).without_defaults()
+        | "Get avg word length"
+        >> beam.CombineGlobally(
+            AverageFn()
+        ).without_defaults()  # DAG gets complicated if with_default()
         | "Reify" >> Reify.Timestamp()
         | "Add timestamp" >> beam.ParDo(AddTS())
         | "Create messages"
