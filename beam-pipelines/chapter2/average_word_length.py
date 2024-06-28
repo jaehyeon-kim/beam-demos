@@ -58,7 +58,7 @@ class CalculateAverageWordLength(beam.PTransform):
                 # closing behaviour - EMIT_ALWAYS, on_time_behavior - FIRE_ALWAYS
             )
             | "Tokenize" >> beam.FlatMap(tokenize)
-            | "GetAvgWord length"
+            | "GetAvgWordLength"
             >> beam.CombineGlobally(
                 AverageFn()
             ).without_defaults()  # DAG gets complicated if with_default()
