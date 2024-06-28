@@ -47,12 +47,12 @@ class AddTS(beam.DoFn):
 
 
 class CreateMessags(beam.PTransform):
-    def expand(self, pcoll: pvalue.PCollection) -> typing.Dict[str, str]:
+    def expand(self, pcoll: pvalue.PCollection):
         return (
             pcoll
             | "ReifyTimestamp" >> Reify.Timestamp()
-            | "Add timestamp" >> beam.ParDo(AddTS())
-            | "Create messages"
+            | "AddTimestamp" >> beam.ParDo(AddTS())
+            | "CreateMessages"
             >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
         )
 
@@ -98,8 +98,8 @@ def run(argv=None, save_main_session=True):
             )
         )
 
-    logging.getLogger().setLevel(logging.WARN)
-    logging.info("Building pipeline ...")
+        logging.getLogger().setLevel(logging.WARN)
+        logging.info("Building pipeline ...")
 
 
 if __name__ == "__main__":

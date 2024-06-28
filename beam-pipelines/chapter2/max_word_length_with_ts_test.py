@@ -38,7 +38,7 @@ class MaxWordLengthTest(unittest.TestCase):
                 p
                 | test_stream
                 | "CalculateMaxWordLength" >> CalculateMaxWordLength()
-                | "Reify" >> Reify.Timestamp()
+                | "ReifyTimestamp" >> Reify.Timestamp()
             )
 
             EXPECTED_OUTPUT = [

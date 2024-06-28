@@ -51,9 +51,7 @@ class AddWindowTS(beam.DoFn):
 
 
 class CreateMessags(beam.PTransform):
-    def expand(
-        self, pcoll: pvalue.PCollection
-    ) -> typing.Dict[str, typing.Union[str, int]]:
+    def expand(self, pcoll: pvalue.PCollection):
         return (
             pcoll
             | "AddWindowTS" >> beam.ParDo(AddWindowTS())
