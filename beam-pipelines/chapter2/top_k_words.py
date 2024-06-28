@@ -7,72 +7,17 @@ import logging
 
 import apache_beam as beam
 from apache_beam import pvalue
-from apache_beam.io import kafka
 from apache_beam.transforms.window import FixedWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
-
-def decode_message(kafka_kv: tuple):
-    print(kafka_kv)
-    return kafka_kv[1].decode("utf-8")
-
-
-def tokenize(element: str):
-    return re.findall(r"[A-Za-z\']+", element)
+from word_process_utils import tokenize, ReadWordsFromKafka, WriteProcessOutputsToKafka
 
 
 def create_message(element: typing.Tuple[str, str, str, int]):
     msg = json.dumps(dict(zip(["window_start", "window_end", "word", "freq"], element)))
     print(msg)
     return "".encode("utf-8"), msg.encode("utf-8")
-
-
-class AddWindowTS(beam.DoFn):
-    def process(self, top_k: typing.Tuple[str, int], win_param=beam.DoFn.WindowParam):
-        yield (
-            win_param.start.to_rfc3339(),
-            win_param.end.to_rfc3339(),
-            top_k[0],
-            top_k[1],
-        )
-
-
-class ReadInputsFromKafka(beam.PTransform):
-    def __init__(
-        self,
-        bootstrap_servers: str,
-        topics: typing.List[str],
-        group_id: str,
-        verbose: bool = False,
-        expansion_service: typing.Any = None,
-        label: str | None = None,
-    ) -> None:
-        super().__init__(label)
-        self.boostrap_servers = bootstrap_servers
-        self.topics = topics
-        self.group_id = group_id
-        self.verbose = verbose
-        self.expansion_service = expansion_service
-
-    def expand(self, input: pvalue.PBegin):
-        return (
-            input
-            | "ReadFromKafka"
-            >> kafka.ReadFromKafka(
-                consumer_config={
-                    "bootstrap.servers": self.boostrap_servers,
-                    "auto.offset.reset": "latest",
-                    # "enable.auto.commit": "true",
-                    "group.id": self.group_id,
-                },
-                topics=self.topics,
-                timestamp_policy=kafka.ReadFromKafka.create_time_policy,
-                commit_offset_in_finalize=True,
-                expansion_service=self.expansion_service,
-            )
-            | "DecodeMessage" >> beam.Map(decode_message)
-        )
 
 
 class CalculateTopKWords(beam.PTransform):
@@ -95,31 +40,25 @@ class CalculateTopKWords(beam.PTransform):
         )
 
 
-class WriteOutputsToKafka(beam.PTransform):
-    def __init__(
-        self,
-        bootstrap_servers: str,
-        topic: str,
-        expansion_service: typing.Any = None,
-        label: str | None = None,
-    ) -> None:
-        super().__init__(label)
-        self.boostrap_servers = bootstrap_servers
-        self.topic = topic
-        self.expansion_service = expansion_service
+class AddWindowTS(beam.DoFn):
+    def process(self, top_k: typing.Tuple[str, int], win_param=beam.DoFn.WindowParam):
+        yield (
+            win_param.start.to_rfc3339(),
+            win_param.end.to_rfc3339(),
+            top_k[0],
+            top_k[1],
+        )
 
-    def expand(self, input: pvalue.PCollection):
+
+class CreateMessags(beam.PTransform):
+    def expand(
+        self, pcoll: pvalue.PCollection
+    ) -> typing.Dict[str, typing.Union[str, int]]:
         return (
-            input
+            pcoll
             | "AddWindowTS" >> beam.ParDo(AddWindowTS())
             | "CreateMessages"
             >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
-            | "WriteToKafka"
-            >> kafka.WriteToKafka(
-                producer_config={"bootstrap.servers": self.boostrap_servers},
-                topic=self.topic,
-                expansion_service=self.expansion_service,
-            )
         )
 
 
@@ -152,7 +91,7 @@ def run(argv=None, save_main_session=True):
         (
             p
             | "ReadInputsFromKafka"
-            >> ReadInputsFromKafka(
+            >> ReadWordsFromKafka(
                 bootstrap_servers=known_args.bootstrap_servers,
                 topics=[known_args.input_topic],
                 group_id=f"{known_args.output_topic}-group",
@@ -162,8 +101,9 @@ def run(argv=None, save_main_session=True):
                 window_length=known_args.window_length,
                 top_k=known_args.top_k,
             )
+            | "CreateMessags" >> CreateMessags()
             | "WriteOutputsToKafka"
-            >> WriteOutputsToKafka(
+            >> WriteProcessOutputsToKafka(
                 bootstrap_servers=known_args.bootstrap_servers,
                 topic=known_args.output_topic,
             )
