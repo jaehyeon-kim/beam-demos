@@ -1,13 +1,12 @@
 import os
 import argparse
-import datetime
 import json
 import re
 import logging
 import typing
 
 import apache_beam as beam
-from apache_beam.io import kafka
+from apache_beam import pvalue
 from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
 from apache_beam.transforms.trigger import AfterCount, AccumulationMode, AfterWatermark
 from apache_beam.transforms.util import Reify
@@ -15,109 +14,92 @@ from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
 
-def decode_message(kafka_kv: tuple):
-    print(kafka_kv)
-    return kafka_kv[1].decode("utf-8")
+from word_process_utils import tokenize, ReadWordsFromKafka, WriteProcessOutputsToKafka
 
 
-def tokenize(element: str):
-    return re.findall(r"[A-Za-z\']+", element)
+class CalculateMaxWordLength(beam.PTransform):
+    def expand(self, pcoll: pvalue.PCollection):
+        return (
+            pcoll
+            | "Windowing"
+            >> beam.WindowInto(
+                GlobalWindows(),
+                trigger=AfterWatermark(early=AfterCount(1)),
+                allowed_lateness=0,
+                timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
+                accumulation_mode=AccumulationMode.ACCUMULATING,
+            )
+            | "Tokenize" >> beam.FlatMap(tokenize)
+            | "GetLongestWord" >> beam.combiners.Top.Of(1, key=len).without_defaults()
+            | "Flatten" >> beam.FlatMap(lambda e: e)
+        )
 
 
-def create_message(element: typing.Tuple[datetime.datetime, str]):
-    msg = json.dumps({"created_at": element[0].isoformat(), "word": element[1]})
+def create_message(element: typing.Tuple[str, str]):
+    msg = json.dumps(dict(zip(["created_at", "word"], element)))
     print(msg)
     return "".encode("utf-8"), msg.encode("utf-8")
 
 
 class AddTS(beam.DoFn):
     def process(self, word: str, ts_param=beam.DoFn.TimestampParam):
-        yield ts_param.to_utc_datetime(), word
+        yield ts_param.to_rfc3339(), word
 
 
-def run():
+class CreateMessags(beam.PTransform):
+    def expand(self, pcoll: pvalue.PCollection) -> typing.Dict[str, str]:
+        return (
+            pcoll
+            | "ReifyTimestamp" >> Reify.Timestamp()
+            | "Add timestamp" >> beam.ParDo(AddTS())
+            | "Create messages"
+            >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
+        )
+
+
+def run(argv=None, save_main_session=True):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
-    parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
     parser.add_argument(
-        "--use_own",
-        action="store_true",
-        default="Flag to indicate whether to use an own local cluster",
+        "--bootstrap_servers",
+        default="host.docker.internal:29092",
+        help="Kafka bootstrap server addresses",
     )
-    parser.add_argument("--input", default="input-topic", help="Input topic")
+    parser.add_argument("--input_topic", default="input-topic", help="Input topic")
     parser.add_argument(
-        "--job_name",
+        "--output_topic",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
-        help="Job name",
+        help="Output topic",
     )
-    opts = parser.parse_args()
-    print(opts)
 
-    pipeline_opts = {
-        "runner": opts.runner,
-        "job_name": opts.job_name,
-        "environment_type": "LOOPBACK",
-        "streaming": True,
-        "parallelism": 3,
-        "experiments": [
-            "use_deprecated_read"
-        ],  ## https://github.com/apache/beam/issues/20979
-        "checkpointing_interval": "60000",
-    }
-    if opts.use_own is True:
-        pipeline_opts = {**pipeline_opts, **{"flink_master": "localhost:8081"}}
-    print(pipeline_opts)
-    options = PipelineOptions([], **pipeline_opts)
-    # Required, else it will complain that when importing worker functions
-    options.view_as(SetupOptions).save_main_session = True
+    known_args, pipeline_args = parser.parse_known_args(argv)
+    print(f"known args - {known_args}")
+    print(f"pipeline args - {pipeline_args}")
 
-    p = beam.Pipeline(options=options)
-    (
-        p
-        | "Read from Kafka"
-        >> kafka.ReadFromKafka(
-            consumer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                ),
-                "auto.offset.reset": "earliest",
-                # "enable.auto.commit": "true",
-                "group.id": opts.job_name,
-            },
-            topics=[opts.input],
+    # We use the save_main_session option because one or more DoFn's in this
+    # workflow rely on global context (e.g., a module imported at module level).
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(SetupOptions).save_main_session = save_main_session
+
+    with beam.Pipeline(options=pipeline_options) as p:
+        (
+            p
+            | "ReadInputsFromKafka"
+            >> ReadWordsFromKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topics=[known_args.input_topic],
+                group_id=f"{known_args.output_topic}-group",
+            )
+            | "CalculateMaxWordLength" >> CalculateMaxWordLength()
+            | "CreateMessags" >> CreateMessags()
+            | "WriteOutputsToKafka"
+            >> WriteProcessOutputsToKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topic=known_args.output_topic,
+            )
         )
-        | "Decode messages" >> beam.Map(decode_message)
-        | "Windowing"
-        >> beam.WindowInto(
-            GlobalWindows(),
-            trigger=AfterWatermark(early=AfterCount(1)),
-            allowed_lateness=0,
-            timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
-            accumulation_mode=AccumulationMode.ACCUMULATING,
-        )
-        | "Extract words" >> beam.FlatMap(tokenize)
-        | "Get longest word" >> beam.combiners.Top.Of(1, key=len).without_defaults()
-        | "Flatten" >> beam.FlatMap(lambda e: e)
-        | "Reify" >> Reify.Timestamp()
-        | "Add timestamp" >> beam.ParDo(AddTS())
-        | "Create messages"
-        >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
-        | "Write to Kafka"
-        >> kafka.WriteToKafka(
-            producer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                )
-            },
-            topic=opts.job_name,
-        )
-    )
 
     logging.getLogger().setLevel(logging.WARN)
     logging.info("Building pipeline ...")
-
-    p.run().wait_until_finish()
 
 
 if __name__ == "__main__":

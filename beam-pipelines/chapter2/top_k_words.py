@@ -14,12 +14,6 @@ from apache_beam.options.pipeline_options import SetupOptions
 from word_process_utils import tokenize, ReadWordsFromKafka, WriteProcessOutputsToKafka
 
 
-def create_message(element: typing.Tuple[str, str, str, int]):
-    msg = json.dumps(dict(zip(["window_start", "window_end", "word", "freq"], element)))
-    print(msg)
-    return "".encode("utf-8"), msg.encode("utf-8")
-
-
 class CalculateTopKWords(beam.PTransform):
     def __init__(
         self, window_length: int, top_k: int, label: str | None = None
@@ -28,9 +22,9 @@ class CalculateTopKWords(beam.PTransform):
         self.top_k = top_k
         super().__init__(label)
 
-    def expand(self, input: pvalue.PCollection):
+    def expand(self, pcoll: pvalue.PCollection):
         return (
-            input
+            pcoll
             | "Windowing" >> beam.WindowInto(FixedWindows(size=self.window_length))
             | "Tokenize" >> beam.FlatMap(tokenize)
             | "CountPerWord" >> beam.combiners.Count.PerElement()
@@ -38,6 +32,12 @@ class CalculateTopKWords(beam.PTransform):
             >> beam.combiners.Top.Of(self.top_k, lambda e: e[1]).without_defaults()
             | "Flatten" >> beam.FlatMap(lambda e: e)
         )
+
+
+def create_message(element: typing.Tuple[str, str, str, int]):
+    msg = json.dumps(dict(zip(["window_start", "window_end", "word", "freq"], element)))
+    print(msg)
+    return "".encode("utf-8"), msg.encode("utf-8")
 
 
 class AddWindowTS(beam.DoFn):
