@@ -30,14 +30,19 @@ if [ ! -z $start_grpc ] &&  [ $start_grpc = true ]; then
 fi
 
 #### start local flink cluster
+## 0. install java
 ## 1. download flink binary and decompress in the same folder
-##  wget https://dlcdn.apache.org/flink/flink-1.16.3/flink-1.16.3-bin-scala_2.12.tgz
-##  tar -zxf flink-1.16.3-bin-scala_2.12.tgz
-## 2. update flink configuration in eg) ./flink-1.16.3/config/flink-conf.yaml
+##  FLINK_VERSION=1.18.1
+##  wget https://dlcdn.apache.org/flink/flink-${FLINK_VERSION}/flink-${FLINK_VERSION}-bin-scala_2.12.tgz
+##  tar -zxf flink-${FLINK_VERSION}-bin-scala_2.12.tgz
+## 2. update flink configuration in eg) ./flink-${FLINK_VERSION}/conf/flink-conf.yaml
 ##  rest.port: 8081                    # uncommented
 ##  rest.address: localhost            # kept as is
 ##  rest.bind-address: 0.0.0.0         # changed from localhost
 ##  taskmanager.numberOfTaskSlots: 10  # updated from 1
+## 3. update file permission recursively
+##  chmod -R +x flink-${FLINK_VERSION}/bin
 if [ ! -z $start_flink ] && [ $start_flink = true ]; then
-  ${SCRIPT_DIR}/flink-1.16.3/bin/start-cluster.sh
+  FLINK_VERSION=1.18.1
+  ${SCRIPT_DIR}/flink-${FLINK_VERSION}/bin/start-cluster.sh
 fi
