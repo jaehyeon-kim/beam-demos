@@ -22,18 +22,20 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 #### stop kafka cluster in docker
 if [ ! -z $stop_kafka ] && [ $stop_kafka = true ]; then
+  echo "stop kafka..."
   docker-compose -f ${SCRIPT_DIR}/docker-compose.yml down -v
 fi
 
 #### stop grpc server in docker
 if [ ! -z $stop_grpc ] && [ $stop_grpc = true ]; then
+  echo "stop grpc server..."
   docker-compose -f ${SCRIPT_DIR}/docker-compose-grpc.yml down
 fi
 
 #### stop local flink cluster
 if [ ! -z $stop_flink ] && [ $stop_flink = true ]; then
   FLINK_VERSION=${FLINK_VERSION:-1.18.1}
-  echo "stop FLINK ${FLINK_VERSION}..."
+  echo "stop flink ${FLINK_VERSION}..."
   ${SCRIPT_DIR}/flink-${FLINK_VERSION}/bin/stop-cluster.sh
 fi
 

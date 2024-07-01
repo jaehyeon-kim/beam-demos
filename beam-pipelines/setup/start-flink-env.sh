@@ -21,11 +21,13 @@ SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 
 #### start kafka cluster in docker
 if [ ! -z $start_kafka ] &&  [ $start_kafka = true ]; then
+  echo "start kafka..."
   docker-compose -f ${SCRIPT_DIR}/docker-compose.yml up -d
 fi
 
 #### start grpc server in docker
 if [ ! -z $start_grpc ] &&  [ $start_grpc = true ]; then
+  echo "start grpc server..."
   docker-compose -f ${SCRIPT_DIR}/docker-compose-grpc.yml up -d
 fi
 
@@ -40,10 +42,10 @@ fi
 ##  rest.address: localhost            # kept as is
 ##  rest.bind-address: 0.0.0.0         # changed from localhost
 ##  taskmanager.numberOfTaskSlots: 10  # updated from 1
-## 3. update file permission recursively
+## 3. make flink binaries to be executable
 ##  chmod -R +x flink-${FLINK_VERSION}/bin
 if [ ! -z $start_flink ] && [ $start_flink = true ]; then
   FLINK_VERSION=${FLINK_VERSION:-1.18.1}
-  echo "start FLINK ${FLINK_VERSION}..."
+  echo "start flink ${FLINK_VERSION}..."
   ${SCRIPT_DIR}/flink-${FLINK_VERSION}/bin/start-cluster.sh
 fi

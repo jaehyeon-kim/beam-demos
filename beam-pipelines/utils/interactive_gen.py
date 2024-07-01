@@ -5,27 +5,38 @@ import argparse
 from producer import TextProducer
 
 
-def set_timestamp_ms(shift: str):
-    timestamp_ms = int(time.time() * 1000)
-    if len(shift.split()) == 2:
-        digit, unit = tuple(shift.split())
-        if len(re.findall(r"m+", unit)) > 0:
-            multiplier = 60 * 1000
-        elif len(re.findall(r"s+", unit)) > 0:
-            multiplier = 1000
-        else:
-            multiplier = 1
-        timestamp_ms += int(digit) * multiplier
-    return timestamp_ms
+def get_digit(shift: str, pattern: str = None):
+    try:
+        return int(re.sub(pattern, "", shift).strip())
+    except (TypeError, ValueError):
+        return 1
+
+
+def get_ts_shift(shift: str):
+    current = int(time.time() * 1000)
+    multiplier = 1
+    if shift.find("m") > 0:
+        multiplier = 60 * 1000
+        digit = get_digit(shift, r"m.+")
+    elif shift.find("s") > 0:
+        multiplier = 1000
+        digit = get_digit(shift, r"s.+")
+    else:
+        digit = get_digit(shift)
+    return {
+        "current": current,
+        "shift": int(digit) * multiplier,
+        "shifted": current + int(digit) * multiplier,
+    }
 
 
 def parse_user_input(user_input: str):
-    if len(re.split(r"[:;|]", user_input)) == 2:
+    if len(user_input.split(";")) == 2:
         shift, text = tuple(user_input.split(";"))
-        timestamp_ms = set_timestamp_ms(shift)
-        return {"text": text.lstrip(), "timestamp_ms": timestamp_ms}
-    else:
-        return {"text": user_input}
+        shift_info = get_ts_shift(shift)
+        print({**{"text": text.strip()}, **shift_info})
+        return {"text": text.strip(), "timestamp_ms": shift_info["shifted"]}
+    return {"text": user_input}
 
 
 if __name__ == "__main__":
