@@ -1,23 +1,12 @@
-import sys
 import unittest
 
-import apache_beam as beam
 from apache_beam.coders import coders
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that, equal_to
 from apache_beam.testing.test_stream import TestStream
-from apache_beam.transforms.trigger import AfterCount, AccumulationMode, Repeatedly
-from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
 
-from average_word_length import tokenize, AverageFn
-
-
-def main(out=sys.stderr, verbosity=2):
-    loader = unittest.TestLoader()
-
-    suite = loader.loadTestsFromModule(sys.modules[__name__])
-    unittest.TextTestRunner(out, verbosity=verbosity).run(suite)
+from average_word_length import CalculateAverageWordLength
 
 
 class MaxWordLengthTest(unittest.TestCase):
@@ -44,17 +33,7 @@ class MaxWordLengthTest(unittest.TestCase):
             output = (
                 p
                 | test_stream
-                | "Windowing"
-                >> beam.WindowInto(
-                    GlobalWindows(),
-                    trigger=Repeatedly(AfterCount(1)),
-                    allowed_lateness=0,
-                    timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
-                    accumulation_mode=AccumulationMode.ACCUMULATING,
-                )
-                | "Extract words" >> beam.FlatMap(tokenize)
-                | "Get avg word length"
-                >> beam.CombineGlobally(AverageFn()).without_defaults()
+                | "CalculateMaxWordLength" >> CalculateAverageWordLength()
             )
 
             EXPECTED_OUTPUT = [1.0, 1.5, 2.0]
@@ -63,4 +42,4 @@ class MaxWordLengthTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    main(out=None)
+    unittest.main()

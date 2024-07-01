@@ -1,4 +1,5 @@
 flink-1.16.3
+flink-1.18.1
 inputs/*.out
 outputs/*.out
 flink-savepoints

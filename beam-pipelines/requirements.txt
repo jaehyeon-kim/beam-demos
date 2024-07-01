@@ -1,4 +1,4 @@
-apache-beam[test]==2.56.0
+apache-beam[test]==2.57.0
 faker
 kafka-python
 grpcio~=1.62.1
