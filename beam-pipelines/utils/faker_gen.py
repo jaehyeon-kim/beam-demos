@@ -25,7 +25,7 @@ if __name__ == "__main__":
         "-d",
         type=float,
         default=1,
-        help="The amount of time that a record should be delayed. Only applicable to streaming.",
+        help="The amount of time that a record should be delayed.",
     )
     args = parser.parse_args()
 
