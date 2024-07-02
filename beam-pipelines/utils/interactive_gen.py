@@ -34,8 +34,12 @@ def parse_user_input(user_input: str):
     if len(user_input.split(";")) == 2:
         shift, text = tuple(user_input.split(";"))
         shift_info = get_ts_shift(shift)
-        print({**{"text": text.strip()}, **shift_info})
+        msg = " | ".join(
+            [f"{k}: {v}" for k, v in {**{"text": text.strip()}, **shift_info}.items()]
+        )
+        print(f">> {msg}")
         return {"text": text.strip(), "timestamp_ms": shift_info["shifted"]}
+    print(f">> text: {user_input}")
     return {"text": user_input}
 
 
@@ -62,6 +66,6 @@ if __name__ == "__main__":
     producer = TextProducer(args.bootstrap_servers, args.topic_name)
 
     while True:
-        user_input = input("Enter text: ")
+        user_input = input("ENTER TEXT: ")
         args = parse_user_input(user_input)
         producer.send_to_kafka(**args)
