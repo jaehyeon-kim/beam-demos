@@ -5,13 +5,10 @@ import logging
 import typing
 
 import apache_beam as beam
-from apache_beam import pvalue
-from apache_beam.transforms.window import GlobalWindows, TimestampCombiner
-from apache_beam.transforms.trigger import (
-    AfterWatermark,
-    AccumulationMode,
-    AfterProcessingTime,
-)
+from apache_beam import pvalue, coders
+from apache_beam.transforms.sql import SqlTransform
+from apache_beam.transforms.window import TimestampCombiner, FixedWindows
+from apache_beam.transforms.trigger import AccumulationMode
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
@@ -22,22 +19,43 @@ from sport_tracker_utils import (
 )
 
 
-def compute(element: typing.Tuple[str, typing.Iterable[Position]]):
-    last: Position = None
-    distance = 0
-    duration = 0
-    for p in sorted(element[1], key=lambda p: p.timestamp):
-        if last is not None:
-            distance += abs(p.spot - last.spot)
-            duration += p.timestamp - last.timestamp
-        last = p
-    return element[0], distance / duration if duration > 0 else 0
+class Track(typing.NamedTuple):
+    user: str
+    spot: int
+    timestamp: float
+
+
+coders.registry.register_coder(Track, coders.RowCoder)
+
+
+def to_track(element: typing.Tuple[str, Position]):
+    return Track(element[0], element[1].spot, element[1].timestamp)
 
 
 class ComputeMetrics(beam.PTransform):
     def expand(self, pcoll: pvalue.PCollection):
         return (
-            pcoll | "GroupByKey" >> beam.GroupByKey() | "Compute" >> beam.Map(compute)
+            pcoll
+            | "ToTrack" >> beam.Map(to_track).with_output_types(Track)
+            | "Compute"
+            >> SqlTransform(
+                """
+                WITH cte AS (
+                    SELECT
+                        `user`,
+                        MIN(`spot`) - MAX(`spot`) AS distance,
+                        MIN(`timestamp`) - MAX(`timestamp`) AS duration
+                    FROM PCOLLECTION
+                    GROUP BY `user`
+                )
+                SELECT 
+                    `user`,
+                    CASE WHEN duration = 0 THEN 0 ELSE distance / duration END AS speed
+                FROM cte
+                """
+            )
+            | "ToTuple"
+            >> beam.Map(lambda e: tuple(e)).with_output_types(typing.Tuple[str, float])
         )
 
 
@@ -82,10 +100,7 @@ def run(argv=None, save_main_session=True):
             )
             | "Windowing"
             >> beam.WindowInto(
-                GlobalWindows(),
-                trigger=AfterWatermark(early=AfterProcessingTime(3)),
-                # impossible to allow late data using default timestamp policies
-                # unless manually specifying timestamp by producer
+                FixedWindows(5),
                 allowed_lateness=0,
                 timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
                 accumulation_mode=AccumulationMode.ACCUMULATING,
