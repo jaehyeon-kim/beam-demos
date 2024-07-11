@@ -75,16 +75,21 @@ def run(argv=None, save_main_session=True):
     )
     parser.add_argument("--window_length", default="10", type=int, help="Window length")
     parser.add_argument("--top_k", default="3", type=int, help="Top k")
+    parser.add_argument(
+        "--deprecated_read",
+        action="store_true",
+        default="Whether to use a deprecated read. See https://github.com/apache/beam/issues/20979",
+    )
+    parser.set_defaults(deprecated_read=False)
 
     known_args, pipeline_args = parser.parse_known_args(argv)
-    print(f"known args - {known_args}")
-    print(f"pipeline args - {pipeline_args}")
 
     # # We use the save_main_session option because one or more DoFn's in this
     # # workflow rely on global context (e.g., a module imported at module level).
     pipeline_options = PipelineOptions(pipeline_args)
     pipeline_options.view_as(SetupOptions).save_main_session = save_main_session
-    # print(f"pipeline options - {pipeline_options.display_data()}")
+    print(f"known args - {known_args}")
+    print(f"pipeline options - {pipeline_options.display_data()}")
 
     with beam.Pipeline(options=pipeline_options) as p:
         (
@@ -94,6 +99,7 @@ def run(argv=None, save_main_session=True):
                 bootstrap_servers=known_args.bootstrap_servers,
                 topics=[known_args.input_topic],
                 group_id=f"{known_args.output_topic}-group",
+                deprecated_read=known_args.deprecated_read,
             )
             | "CalculateTopKWords"
             >> CalculateTopKWords(
@@ -105,6 +111,7 @@ def run(argv=None, save_main_session=True):
             >> WriteProcessOutputsToKafka(
                 bootstrap_servers=known_args.bootstrap_servers,
                 topic=known_args.output_topic,
+                deprecated_read=known_args.deprecated_read,
             )
         )
 
