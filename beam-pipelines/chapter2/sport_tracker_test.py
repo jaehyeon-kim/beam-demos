@@ -1,4 +1,3 @@
-import sys
 import os
 import re
 import typing
@@ -6,6 +5,7 @@ import unittest
 
 import apache_beam as beam
 from apache_beam.coders import coders
+
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that, equal_to
 from apache_beam.testing.test_stream import TestStream
@@ -53,13 +53,6 @@ def compute_expected_metrics(lines: list):
     ]
 
 
-def main(out=sys.stderr, verbosity=2):
-    loader = unittest.TestLoader()
-
-    suite = loader.loadTestsFromModule(sys.modules[__name__])
-    unittest.TextTestRunner(out, verbosity=verbosity).run(suite)
-
-
 class SportTrackerTest(unittest.TestCase):
     def test_windowing_behaviour(self):
         options = PipelineOptions()
@@ -95,4 +88,4 @@ class SportTrackerTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    main(out=None)
+    unittest.main()

@@ -42,20 +42,27 @@ class PositionCoder(beam.coders.Coder):
 beam.coders.registry.register_coder(Position, PositionCoder)
 
 
+def add_timestamp(element: typing.Tuple[str, Position]):
+    return TimestampedValue(element, Timestamp.of(element[1].timestamp))
+
+
+def to_positions(input: str):
+    workout, spot, timestamp = tuple(re.sub("\n", "", input).split("\t"))
+    return workout, Position(spot=int(spot), timestamp=float(timestamp))
+
+
 class PreProcessInput(beam.PTransform):
     def expand(self, pcoll: pvalue.PCollection):
-        def add_timestamp(element: typing.Tuple[str, Position]):
-            return TimestampedValue(element, Timestamp.of(element[1].timestamp))
-
-        def to_positions(input: str):
-            workout, spot, timestamp = tuple(re.sub("\n", "", input).split("\t"))
-            return workout, Position(spot=int(spot), timestamp=float(timestamp))
-
         return (
             pcoll
             | "ToPositions" >> beam.Map(to_positions)
             | "AddTS" >> beam.Map(add_timestamp)
         )
+
+
+def decode_message(kafka_kv: tuple):
+    print(kafka_kv)
+    return kafka_kv[1].decode("utf-8")
 
 
 @beam.typehints.with_output_types(typing.Tuple[str, Position])
@@ -65,6 +72,7 @@ class ReadPositionsFromKafka(beam.PTransform):
         bootstrap_servers: str,
         topics: typing.List[str],
         group_id: str,
+        deprecated_read: bool,
         verbose: bool = False,
         label: str | None = None,
     ):
@@ -73,13 +81,13 @@ class ReadPositionsFromKafka(beam.PTransform):
         self.topics = topics
         self.group_id = group_id
         self.verbose = verbose
+        self.expansion_service = None
+        if deprecated_read:
+            self.expansion_service = kafka.default_io_expansion_service(
+                ["--experiments=use_deprecated_read"]
+            )
 
     def expand(self, input: pvalue.PBegin):
-        def decode_message(kafka_kv: tuple):
-            if self.verbose:
-                print(kafka_kv)
-            return kafka_kv[1].decode("utf-8")
-
         return (
             input
             | "ReadFromKafka"
@@ -92,6 +100,7 @@ class ReadPositionsFromKafka(beam.PTransform):
                 },
                 topics=self.topics,
                 timestamp_policy=kafka.ReadFromKafka.create_time_policy,
+                expansion_service=self.expansion_service,
             )
             | "DecodeMessage" >> beam.Map(decode_message)
             | "PreProcessInput" >> PreProcessInput()
@@ -104,11 +113,17 @@ class WriteMetricsToKafka(beam.PTransform):
         self,
         bootstrap_servers: str,
         topic: str,
+        deprecated_read: bool,
         label: str | None = None,
     ):
         super().__init__(label)
         self.boostrap_servers = bootstrap_servers
         self.topic = topic
+        self.expansion_service = None
+        if deprecated_read:
+            self.expansion_service = kafka.default_io_expansion_service(
+                ["--experiments=use_deprecated_read"]
+            )
 
     def expand(self, pcoll: pvalue.PCollection):
         def create_message(element: typing.Tuple[str, float]):
@@ -124,5 +139,6 @@ class WriteMetricsToKafka(beam.PTransform):
             >> kafka.WriteToKafka(
                 producer_config={"bootstrap.servers": self.boostrap_servers},
                 topic=self.topic,
+                expansion_service=self.expansion_service,
             )
         )
