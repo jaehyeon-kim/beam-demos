@@ -21,8 +21,8 @@ class ReadWordsFromKafka(beam.PTransform):
         bootstrap_servers: str,
         topics: typing.List[str],
         group_id: str,
+        deprecated_read: bool,
         verbose: bool = False,
-        expansion_service: typing.Any = None,
         label: str | None = None,
     ) -> None:
         super().__init__(label)
@@ -30,7 +30,11 @@ class ReadWordsFromKafka(beam.PTransform):
         self.topics = topics
         self.group_id = group_id
         self.verbose = verbose
-        self.expansion_service = expansion_service
+        self.expansion_service = None
+        if deprecated_read:
+            self.expansion_service = kafka.default_io_expansion_service(
+                ["--experiments=use_deprecated_read"]
+            )
 
     def expand(self, input: pvalue.PBegin):
         return (
@@ -57,13 +61,17 @@ class WriteProcessOutputsToKafka(beam.PTransform):
         self,
         bootstrap_servers: str,
         topic: str,
-        expansion_service: typing.Any = None,
+        deprecated_read: bool,
         label: str | None = None,
     ) -> None:
         super().__init__(label)
         self.boostrap_servers = bootstrap_servers
         self.topic = topic
-        self.expansion_service = expansion_service
+        self.expansion_service = None
+        if deprecated_read:
+            self.expansion_service = kafka.default_io_expansion_service(
+                ["--experiments=use_deprecated_read"]
+            )
 
     def expand(self, pcoll: pvalue.PCollection):
         return pcoll | "WriteToKafka" >> kafka.WriteToKafka(
