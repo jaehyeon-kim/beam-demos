@@ -14,7 +14,7 @@ from sliding_window_word_length import CalculateAverageWordLength, AddWindowTS
 
 
 def create_dt(index: int):
-    return datetime.datetime.fromtimestamp(index, tz=datetime.timezone.utc).replace(
+    return datetime.datetime.fromtimestamp(index - 8, tz=datetime.timezone.utc).replace(
         tzinfo=None
     )
 
@@ -28,7 +28,7 @@ class SlidingWindowWordLengthTest(unittest.TestCase):
         options = PipelineOptions()
         options.view_as(StandardOptions).streaming = True
         with TestPipeline(options=options) as p:
-            now = 8  # window start becomes datetime.datetime(1970, 1, 1, 0, 0) if 8, not 0??
+            now = 0
             test_stream = (
                 TestStream(coder=coders.StrUtf8Coder())
                 .with_output_types(str)
