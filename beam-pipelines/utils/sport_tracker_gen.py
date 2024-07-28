@@ -41,6 +41,7 @@ class TrackGenerator:
             track = f"user{ind}\t{position.spot}\t{position.timestamp}"
             print(track)
             tracks.append(track)
+        print(f"{'='*len(tracks[0])}")
         return tracks
 
 
