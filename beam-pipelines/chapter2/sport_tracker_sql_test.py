@@ -11,7 +11,7 @@ from apache_beam.transforms.trigger import AccumulationMode
 from apache_beam.options.pipeline_options import PipelineOptions
 
 from sport_tracker_utils import PreProcessInput
-from sport_tracker import ComputeMetrics
+from sport_tracker_sql import ComputeMetrics
 
 
 def main(out=sys.stderr, verbosity=2):
