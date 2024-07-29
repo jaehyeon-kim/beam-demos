@@ -6,8 +6,7 @@ from apache_beam.coders import coders
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that, equal_to
 from apache_beam.testing.test_stream import TestStream
-from apache_beam.transforms.window import TimestampCombiner, FixedWindows
-from apache_beam.transforms.trigger import AccumulationMode
+from apache_beam.transforms.window import FixedWindows
 from apache_beam.options.pipeline_options import PipelineOptions
 
 from sport_tracker_utils import PreProcessInput
