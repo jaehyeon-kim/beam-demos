@@ -98,13 +98,7 @@ def run(argv=None, save_main_session=True):
                 group_id=f"{known_args.output_topic}-group",
                 deprecated_read=known_args.deprecated_read,
             )
-            | "Windowing"
-            >> beam.WindowInto(
-                FixedWindows(5),
-                allowed_lateness=0,
-                timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
-                accumulation_mode=AccumulationMode.ACCUMULATING,
-            )
+            | "Windowing" >> beam.WindowInto(FixedWindows(5), allowed_lateness=0)
             | "ComputeMetrics" >> ComputeMetrics()
             | "WriteNotifications"
             >> WriteMetricsToKafka(
