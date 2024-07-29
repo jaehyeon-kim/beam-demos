@@ -45,13 +45,7 @@ class SportTrackerTest(unittest.TestCase):
                 p
                 | test_stream
                 | "PreProcessInput" >> PreProcessInput()
-                | "Windowing"
-                >> beam.WindowInto(
-                    FixedWindows(5),
-                    allowed_lateness=0,
-                    timestamp_combiner=TimestampCombiner.OUTPUT_AT_LATEST,
-                    accumulation_mode=AccumulationMode.ACCUMULATING,
-                )
+                | "Windowing" >> beam.WindowInto(FixedWindows(5), allowed_lateness=0)
                 | "ComputeMetrics" >> ComputeMetrics()
             )
 
