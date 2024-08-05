@@ -1,4 +1,3 @@
-import sys
 import os
 import unittest
 import typing
@@ -15,7 +14,16 @@ import grpc
 import service_pb2_grpc
 import server
 
-from rpc_pardo_stateful import tokenize, to_buckets, BatchRpcDoFnStateful
+from rpc_pardo_stateful import to_buckets, BatchRpcDoFnStateful
+from io_utils import tokenize
+
+
+class MyItem(typing.NamedTuple):
+    word: str
+    length: int
+
+
+beam.coders.registry.register_coder(MyItem, beam.coders.RowCoder)
 
 
 def read_file(filename: str, inputpath: str):
@@ -29,13 +37,6 @@ def compute_expected_output(lines: list):
         words = [(w, len(w)) for w in tokenize(line)]
         output = output + words
     return output
-
-
-def main(out=sys.stderr, verbosity=2):
-    loader = unittest.TestLoader()
-
-    suite = loader.loadTestsFromModule(sys.modules[__name__])
-    unittest.TextTestRunner(out, verbosity=verbosity).run(suite)
 
 
 class RcpParDooStatefulTest(unittest.TestCase):
@@ -67,18 +68,20 @@ class RcpParDooStatefulTest(unittest.TestCase):
             output = (
                 p
                 | test_stream
-                | "Extract words" >> beam.FlatMap(tokenize)
-                | "To buckets"
+                | "ExtractWords" >> beam.FlatMap(tokenize)
+                | "ToBuckets"
                 >> beam.Map(to_buckets).with_output_types(typing.Tuple[int, str])
-                | "Request RPC"
+                | "RequestRPC"
                 >> beam.ParDo(BatchRpcDoFnStateful(batch_size=10, max_wait_secs=5))
             )
+
+            output | beam.Map(lambda e: e)
 
             EXPECTED_OUTPUT = compute_expected_output(lines)
 
             """???
-            apache_beam.testing.util.BeamAssertException: Failed assert: 
-                [('Lorem', 5), ('ipsum', 5), ('dolor', 5), ('sit', 3), ('amet', 4), ('consectetuer', 12), ('adipiscing', 10), ('elit', 4)] == [], 
+            apache_beam.testing.util.BeamAssertException: Failed assert:
+                [('Lorem', 5), ('ipsum', 5), ('dolor', 5), ('sit', 3), ('amet', 4), ('consectetuer', 12), ('adipiscing', 10), ('elit', 4)] == [],
                 missing elements [('Lorem', 5), ('ipsum', 5), ('dolor', 5), ('sit', 3), ('amet', 4), ('consectetuer', 12), ('adipiscing', 10), ('elit', 4)] [while running 'assert_that/Match']
             """
 
@@ -86,4 +89,4 @@ class RcpParDooStatefulTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    main(out=None)
+    unittest.main()

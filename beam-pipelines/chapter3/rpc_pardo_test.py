@@ -1,4 +1,3 @@
-import sys
 import os
 import unittest
 from concurrent import futures
@@ -14,7 +13,8 @@ import grpc
 import service_pb2_grpc
 import server
 
-from rpc_pardo import tokenize, RpcDoFn
+from rpc_pardo import RpcDoFn
+from io_utils import tokenize
 
 
 def read_file(filename: str, inputpath: str):
@@ -28,13 +28,6 @@ def compute_expected_output(lines: list):
         words = [(w, len(w)) for w in tokenize(line)]
         output = output + words
     return output
-
-
-def main(out=sys.stderr, verbosity=2):
-    loader = unittest.TestLoader()
-
-    suite = loader.loadTestsFromModule(sys.modules[__name__])
-    unittest.TextTestRunner(out, verbosity=verbosity).run(suite)
 
 
 class RcpParDooTest(unittest.TestCase):
@@ -66,8 +59,8 @@ class RcpParDooTest(unittest.TestCase):
             output = (
                 p
                 | test_stream
-                | "Extract words" >> beam.FlatMap(tokenize)
-                | "Request RPC" >> beam.ParDo(RpcDoFn())
+                | "ExtractWords" >> beam.FlatMap(tokenize)
+                | "RequestRPC" >> beam.ParDo(RpcDoFn())
             )
 
             EXPECTED_OUTPUT = compute_expected_output(lines)
@@ -76,4 +69,4 @@ class RcpParDooTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    main(out=None)
+    unittest.main()

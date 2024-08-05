@@ -20,6 +20,8 @@ from apache_beam.utils.timestamp import Timestamp, Duration
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
+from io_utils import ReadWordsFromKafka, WriteOutputsToKafka
+
 
 class ValueCoder(beam.coders.Coder):
     def encode(self, e: typing.Tuple[int, str]):
@@ -36,15 +38,6 @@ class ValueCoder(beam.coders.Coder):
 
 
 beam.coders.registry.register_coder(typing.Tuple[int, str], ValueCoder)
-
-
-def decode_message(kafka_kv: tuple):
-    print(kafka_kv)
-    return kafka_kv[1].decode("utf-8")
-
-
-def tokenize(element: str):
-    return re.findall(r"[A-Za-z\']+", element)
 
 
 def create_message(element: typing.Tuple[str, int]):
@@ -148,12 +141,14 @@ class BatchRpcDoFnStateful(beam.DoFn):
         if eow_timer:
             eow_timer.clear()
 
-        uqe_vals = set([e.value for e in elements])
+        unqiue_values = set([e.value for e in elements])
         request_list = service_pb2.RequestList()
-        request_list.request.extend([service_pb2.Request(input=e[1]) for e in uqe_vals])
+        request_list.request.extend(
+            [service_pb2.Request(input=e[1]) for e in unqiue_values]
+        )
         response = self.stub.resolveBatch(request_list)
         resolved = dict(
-            zip([e[1] for e in uqe_vals], [r.output for r in response.response])
+            zip([e[1] for e in unqiue_values], [r.output for r in response.response])
         )
 
         return [
@@ -166,13 +161,18 @@ class BatchRpcDoFnStateful(beam.DoFn):
         ]
 
 
-def run():
+def run(argv=None, save_main_session=True):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
-    parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
     parser.add_argument(
-        "--use_own",
-        action="store_true",
-        default="Flag to indicate whether to use an own local cluster",
+        "--bootstrap_servers",
+        default="host.docker.internal:29092",
+        help="Kafka bootstrap server addresses",
+    )
+    parser.add_argument("--input_topic", default="input-topic", help="Input topic")
+    parser.add_argument(
+        "--output_topic",
+        default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
+        help="Output topic",
     )
     parser.add_argument(
         "--batch_size", type=int, default=10, help="Batch size to process"
@@ -183,76 +183,53 @@ def run():
         default=4,
         help="Maximum wait seconds before processing",
     )
-    parser.add_argument("--input", default="input-topic", help="Input topic")
     parser.add_argument(
-        "--job_name",
-        default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
-        help="Job name",
+        "--deprecated_read",
+        action="store_true",
+        default="Whether to use a deprecated read. See https://github.com/apache/beam/issues/20979",
     )
-    opts = parser.parse_args()
-    print(opts)
+    parser.set_defaults(deprecated_read=False)
 
-    pipeline_opts = {
-        "runner": opts.runner,
-        "job_name": opts.job_name,
-        "environment_type": "LOOPBACK",
-        "streaming": True,
-        "parallelism": 3,
-        "experiments": [
-            "use_deprecated_read"
-        ],  ## https://github.com/apache/beam/issues/20979
-        "checkpointing_interval": "60000",
-    }
-    if opts.use_own is True:
-        pipeline_opts = {**pipeline_opts, **{"flink_master": "localhost:8081"}}
-    print(pipeline_opts)
-    options = PipelineOptions([], **pipeline_opts)
-    # Required, else it will complain that when importing worker functions
-    options.view_as(SetupOptions).save_main_session = True
+    known_args, pipeline_args = parser.parse_known_args(argv)
 
-    p = beam.Pipeline(options=options)
-    (
-        p
-        | "Read from Kafka"
-        >> kafka.ReadFromKafka(
-            consumer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                ),
-                "auto.offset.reset": "earliest",
-                # "enable.auto.commit": "true",
-                "group.id": opts.job_name,
-            },
-            topics=[opts.input],
-        )
-        | "Decode messages" >> beam.Map(decode_message)
-        | "Extract words" >> beam.FlatMap(tokenize)
-        | "To buckets" >> beam.Map(to_buckets).with_output_types(typing.Tuple[int, str])
-        | "Request RPC"
-        >> beam.ParDo(
-            BatchRpcDoFnStateful(
-                batch_size=opts.batch_size, max_wait_secs=opts.max_wait_secs
+    # # We use the save_main_session option because one or more DoFn's in this
+    # # workflow rely on global context (e.g., a module imported at module level).
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(SetupOptions).save_main_session = save_main_session
+    print(f"known args - {known_args}")
+    print(f"pipeline options - {pipeline_options.display_data()}")
+
+    with beam.Pipeline(options=pipeline_options) as p:
+        (
+            p
+            | "ReadInputsFromKafka"
+            >> ReadWordsFromKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topics=[known_args.input_topic],
+                group_id=f"{known_args.output_topic}-group",
+                deprecated_read=known_args.deprecated_read,
+            )
+            | "ToBuckets"
+            >> beam.Map(to_buckets).with_output_types(typing.Tuple[int, str])
+            | "RequestRPC"
+            >> beam.ParDo(
+                BatchRpcDoFnStateful(
+                    batch_size=known_args.batch_size,
+                    max_wait_secs=known_args.max_wait_secs,
+                )
+            )
+            | "CreateMessags"
+            >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
+            | "WriteOutputsToKafka"
+            >> WriteOutputsToKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topic=known_args.output_topic,
+                deprecated_read=known_args.deprecated_read,
             )
         )
-        | "Create messages"
-        >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
-        | "Write to Kafka"
-        >> kafka.WriteToKafka(
-            producer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                )
-            },
-            topic=opts.job_name,
-        )
-    )
 
-    logging.getLogger().setLevel(logging.WARN)
-    logging.info("Building pipeline ...")
-
-    p.run().wait_until_finish()
+        logging.getLogger().setLevel(logging.WARN)
+        logging.info("Building pipeline ...")
 
 
 if __name__ == "__main__":
