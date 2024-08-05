@@ -55,8 +55,8 @@ class RcpParDooStatefulTest(unittest.TestCase):
         self.server.stop(None)
 
     def test_pipeline(self):
-        options = PipelineOptions()
-        options.view_as(StandardOptions).streaming = True
+        pipeline_opts = {"runner": "FlinkRunner", "parallelism": 1, "streaming": True}
+        options = PipelineOptions([], **pipeline_opts)
         with TestPipeline(options=options) as p:
             PARENT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
             lines = read_file("lorem-short.txt", os.path.join(PARENT_DIR, "inputs"))
@@ -75,15 +75,7 @@ class RcpParDooStatefulTest(unittest.TestCase):
                 >> beam.ParDo(BatchRpcDoFnStateful(batch_size=10, max_wait_secs=5))
             )
 
-            output | beam.Map(lambda e: e)
-
             EXPECTED_OUTPUT = compute_expected_output(lines)
-
-            """???
-            apache_beam.testing.util.BeamAssertException: Failed assert:
-                [('Lorem', 5), ('ipsum', 5), ('dolor', 5), ('sit', 3), ('amet', 4), ('consectetuer', 12), ('adipiscing', 10), ('elit', 4)] == [],
-                missing elements [('Lorem', 5), ('ipsum', 5), ('dolor', 5), ('sit', 3), ('amet', 4), ('consectetuer', 12), ('adipiscing', 10), ('elit', 4)] [while running 'assert_that/Match']
-            """
 
             assert_that(output, equal_to(EXPECTED_OUTPUT))
 

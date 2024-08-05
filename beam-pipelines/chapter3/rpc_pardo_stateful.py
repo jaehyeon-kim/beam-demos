@@ -6,7 +6,6 @@ import typing
 import logging
 
 import apache_beam as beam
-from apache_beam.io import kafka
 from apache_beam.transforms.timeutil import TimeDomain
 from apache_beam.transforms.userstate import (
     ReadModifyWriteStateSpec,
