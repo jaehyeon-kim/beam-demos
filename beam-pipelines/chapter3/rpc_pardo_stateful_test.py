@@ -8,7 +8,7 @@ from apache_beam.coders import coders
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that, equal_to
 from apache_beam.testing.test_stream import TestStream
-from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+from apache_beam.options.pipeline_options import PipelineOptions
 
 import grpc
 import service_pb2_grpc
