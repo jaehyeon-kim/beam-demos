@@ -1,0 +1,2 @@
+Python gRPC Tutorial - Create a gRPC Client and Server in Python with Various Types of gRPC Calls
+- https://www.youtube.com/watch?v=WB37L7PjI5k
