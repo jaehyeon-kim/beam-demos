@@ -4,7 +4,7 @@ import unittest
 from grpc import StatusCode
 from grpc_testing import server_from_dictionary, strict_real_time
 import service_pb2
-from server import RcpServiceServicer
+from server import RpcServiceServicer
 
 
 def main(out=sys.stderr, verbosity=2):
@@ -18,9 +18,9 @@ class TestService(unittest.TestCase):
     def __init__(self, methodName):
         super().__init__(methodName)
 
-        rcp_servicer = RcpServiceServicer()
+        rpc_servicer = RpcServiceServicer()
         servicers = {
-            service_pb2.DESCRIPTOR.services_by_name["RcpService"]: rcp_servicer
+            service_pb2.DESCRIPTOR.services_by_name["RpcService"]: rpc_servicer
         }
         self.test_server = server_from_dictionary(servicers, strict_real_time())
 
@@ -28,7 +28,7 @@ class TestService(unittest.TestCase):
         request = service_pb2.Request(input="Hello")
         method = self.test_server.invoke_unary_unary(
             method_descriptor=(
-                service_pb2.DESCRIPTOR.services_by_name["RcpService"].methods_by_name[
+                service_pb2.DESCRIPTOR.services_by_name["RpcService"].methods_by_name[
                     "resolve"
                 ]
             ),
@@ -51,7 +51,7 @@ class TestService(unittest.TestCase):
         )
         method = self.test_server.invoke_unary_unary(
             method_descriptor=(
-                service_pb2.DESCRIPTOR.services_by_name["RcpService"].methods_by_name[
+                service_pb2.DESCRIPTOR.services_by_name["RpcService"].methods_by_name[
                     "resolveBatch"
                 ]
             ),

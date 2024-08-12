@@ -31,7 +31,7 @@ class RpcDoFn(beam.DoFn):
         self.channel: grpc.Channel = grpc.insecure_channel(
             f"{self.hostname}:{self.port}"
         )
-        self.stub = service_pb2_grpc.RcpServiceStub(self.channel)
+        self.stub = service_pb2_grpc.RpcServiceStub(self.channel)
 
     def teardown(self):
         if self.channel is not None:

@@ -16,12 +16,12 @@ def main(out=sys.stderr, verbosity=2):
 
 
 class TestService(unittest.TestCase):
-    server_class = server.RcpServiceServicer
+    server_class = server.RpcServiceServicer
     port = 550051
 
     def setUp(self):
         self.server = grpc.server(futures.ThreadPoolExecutor())
-        service_pb2_grpc.add_RcpServiceServicer_to_server(
+        service_pb2_grpc.add_RpcServiceServicer_to_server(
             self.server_class(), self.server
         )
         self.server.add_insecure_port(f"[::]:{self.port}")
@@ -32,14 +32,14 @@ class TestService(unittest.TestCase):
 
     def test_resolve(self):
         with grpc.insecure_channel(f"[::]:{self.port}") as channel:
-            stub = service_pb2_grpc.RcpServiceStub(channel)
+            stub = service_pb2_grpc.RpcServiceStub(channel)
             request = service_pb2.Request(input="Hello")
             response = stub.resolve(request)
         self.assertEqual(5, response.output)
 
     def test_resolve_batch(self):
         with grpc.insecure_channel(f"[::]:{self.port}") as channel:
-            stub = service_pb2_grpc.RcpServiceStub(channel)
+            stub = service_pb2_grpc.RpcServiceStub(channel)
             request_list = service_pb2.RequestList()
             request_list.request.extend(
                 [

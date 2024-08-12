@@ -7,7 +7,7 @@ import service_pb2
 import service_pb2_grpc
 
 
-class RcpServiceServicer(service_pb2_grpc.RcpServiceServicer):
+class RpcServiceServicer(service_pb2_grpc.RpcServiceServicer):
     def resolve(self, request, context):
         if os.getenv("VERBOSE", "False") == "True":
             print(f"resolve Request Made: input - {request.input}")
@@ -27,7 +27,7 @@ class RcpServiceServicer(service_pb2_grpc.RcpServiceServicer):
 
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor())
-    service_pb2_grpc.add_RcpServiceServicer_to_server(RcpServiceServicer(), server)
+    service_pb2_grpc.add_RpcServiceServicer_to_server(RpcServiceServicer(), server)
     server.add_insecure_port(os.getenv("INSECURE_PORT", "0.0.0.0:50051"))
     server.start()
     server.wait_for_termination()

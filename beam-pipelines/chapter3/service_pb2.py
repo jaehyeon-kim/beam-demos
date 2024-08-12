@@ -3,6 +3,7 @@
 # source: service.proto
 # Protobuf Python Version: 4.25.1
 """Generated protocol buffer code."""
+
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import symbol_database as _symbol_database
@@ -12,23 +13,23 @@ from google.protobuf.internal import builder as _builder
 _sym_db = _symbol_database.Default()
 
 
-
-
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rservice.proto\x12\x08\x63hapter3\"\x18\n\x07Request\x12\r\n\x05input\x18\x01 \x01(\t\"\x1a\n\x08Response\x12\x0e\n\x06output\x18\x01 \x01(\x05\"1\n\x0bRequestList\x12\"\n\x07request\x18\x01 \x03(\x0b\x32\x11.chapter3.Request\"4\n\x0cResponseList\x12$\n\x08response\x18\x01 \x03(\x0b\x32\x12.chapter3.Response2}\n\nRcpService\x12\x30\n\x07resolve\x12\x11.chapter3.Request\x1a\x12.chapter3.Response\x12=\n\x0cresolveBatch\x12\x15.chapter3.RequestList\x1a\x16.chapter3.ResponseListb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\rservice.proto\x12\x08\x63hapter3"\x18\n\x07Request\x12\r\n\x05input\x18\x01 \x01(\t"\x1a\n\x08Response\x12\x0e\n\x06output\x18\x01 \x01(\x05"1\n\x0bRequestList\x12"\n\x07request\x18\x01 \x03(\x0b\x32\x11.chapter3.Request"4\n\x0cResponseList\x12$\n\x08response\x18\x01 \x03(\x0b\x32\x12.chapter3.Response2}\n\nRpcService\x12\x30\n\x07resolve\x12\x11.chapter3.Request\x1a\x12.chapter3.Response\x12=\n\x0cresolveBatch\x12\x15.chapter3.RequestList\x1a\x16.chapter3.ResponseListb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'service_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "service_pb2", _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
-  DESCRIPTOR._options = None
-  _globals['_REQUEST']._serialized_start=27
-  _globals['_REQUEST']._serialized_end=51
-  _globals['_RESPONSE']._serialized_start=53
-  _globals['_RESPONSE']._serialized_end=79
-  _globals['_REQUESTLIST']._serialized_start=81
-  _globals['_REQUESTLIST']._serialized_end=130
-  _globals['_RESPONSELIST']._serialized_start=132
-  _globals['_RESPONSELIST']._serialized_end=184
-  _globals['_RCPSERVICE']._serialized_start=186
-  _globals['_RCPSERVICE']._serialized_end=311
+    DESCRIPTOR._options = None
+    _globals["_REQUEST"]._serialized_start = 27
+    _globals["_REQUEST"]._serialized_end = 51
+    _globals["_RESPONSE"]._serialized_start = 53
+    _globals["_RESPONSE"]._serialized_end = 79
+    _globals["_REQUESTLIST"]._serialized_start = 81
+    _globals["_REQUESTLIST"]._serialized_end = 130
+    _globals["_RESPONSELIST"]._serialized_start = 132
+    _globals["_RESPONSELIST"]._serialized_end = 184
+    _globals["_RPCSERVICE"]._serialized_start = 186
+    _globals["_RPCSERVICE"]._serialized_end = 311
 # @@protoc_insertion_point(module_scope)
