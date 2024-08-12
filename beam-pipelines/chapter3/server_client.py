@@ -17,7 +17,7 @@ def get_client_stream_requests():
 
 def run():
     with grpc.insecure_channel("localhost:50051") as channel:
-        stub = service_pb2_grpc.RcpServiceStub(channel)
+        stub = service_pb2_grpc.RpcServiceStub(channel)
         print("1. Resolve - Unary")
         print("2. ResolveBatch - Unary")
         rpc_call = input("Which rpc would you like to make: ")
