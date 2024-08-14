@@ -55,10 +55,9 @@ class GetNthStringFn(beam.DoFn):
         ts_diff = datetime.now().timestamp() - self._customers["timestamp"]
         if ts_diff > self._max_stale_sec:
             logging.info(f"refresh customer cache after {ts_diff} seconds...")
-            current_ts = datetime.now().timestamp()
             self._version += 1
             self._customer_lookup = self._shared_handle.acquire(
-                self.load_customers, current_ts
+                self.load_customers, datetime.now().timestamp()
             )
 
     def process(self, element):
@@ -75,7 +74,6 @@ def run(argv=None):
 
     with beam.Pipeline(options=pipeline_options) as p:
         shared_handle = shared.Shared()
-
         (
             p
             | PeriodicImpulse(fire_interval=2, apply_windowing=False)
