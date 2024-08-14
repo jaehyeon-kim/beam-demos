@@ -1,0 +1,12 @@
+Cache data using a shared object
+
+A cache is a software component that stores data so that future requests for that data can be served faster. Side inputs, stateful DoFn and calling an external service can be used for accessing a cache. The Python SDK provide another option in the shared module, which can be more efficient that side inputs in terms of the amount of memory required or simpler than stateful DoFn.
+
+The samples on this page show you how to use the Shared class in the shared module to enrich both bounded and unbounded PCollections. In both the samples, we assume two data sets - order and customer. The order records include customer IDs with which customer attributes are added by mapping the customer records.
+
+Bounded PCollection example
+
+
+
+
+Unbounded PCollection example
