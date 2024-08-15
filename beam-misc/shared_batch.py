@@ -29,6 +29,7 @@ def gen_orders(ts: float, num_ord: int = 5, num_cust: int = 1000):
         yield o
 
 
+# wrapper class needed for a dictionary since it does not support weak references
 class WeakRefDict(dict):
     pass
 

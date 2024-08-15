@@ -30,6 +30,7 @@ def gen_orders(e: float, num_ord: int = 5, num_cust: int = 1000):
         yield o
 
 
+# wrapper class needed for a dictionary since it does not support weak references
 class WeakRefDict(dict):
     pass
 
@@ -42,9 +43,7 @@ class EnrichOrderFn(beam.DoFn):
         self._shared_handle = shared_handle
 
     def setup(self):
-        self._customer_lookup = self._shared_handle.acquire(
-            self.load_customers, datetime.now().timestamp()
-        )
+        self._customer_lookup = self._shared_handle.acquire(self.load_customers, "init")
 
     def load_customers(self):
         time.sleep(2)
@@ -52,14 +51,14 @@ class EnrichOrderFn(beam.DoFn):
         return WeakRefDict(self._customers)
 
     def start_bundle(self):
-        print("start bundle...")
         current_ts = datetime.now().timestamp()
         ts_diff = current_ts - self._customers["timestamp"]
         if ts_diff > self._max_stale_sec:
             logging.info(f"refresh customer cache after {ts_diff} seconds...")
+            logging.info(current_ts - (current_ts % self._max_stale_sec))
             self._version += 1
             self._customer_lookup = self._shared_handle.acquire(
-                self.load_customers, current_ts
+                self.load_customers, current_ts - (current_ts % self._max_stale_sec)
             )
 
     def process(self, element):
@@ -72,7 +71,7 @@ with beam.Pipeline() as p:
     (
         p
         | PeriodicImpulse(fire_interval=2, apply_windowing=False)
-        | "GenerateOrders" >> beam.FlatMap(gen_orders)
+        | beam.FlatMap(gen_orders)
         | beam.ParDo(EnrichOrderFn(shared_handle))
         | beam.Map(print)
     )
