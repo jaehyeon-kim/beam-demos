@@ -1,3 +1,4 @@
+import argparse
 import random
 import logging
 import time
@@ -6,13 +7,13 @@ from uuid import uuid4
 
 import apache_beam as beam
 from apache_beam.utils import shared
+from apache_beam.options.pipeline_options import PipelineOptions
 
 
 def gen_customers(version: int, num_cust: int = 1000):
     d = dict()
     for r in range(num_cust):
         d[r] = {"version": version}
-    d["timestamp"] = datetime.now().timestamp()
     return d
 
 
@@ -29,7 +30,7 @@ def gen_orders(ts: float, num_ord: int = 5, num_cust: int = 1000):
         yield o
 
 
-# wrapper class needed for a dictionary since it does not support weak references
+# The wrapper class is needed for a dictionary, because it does not support weak references.
 class WeakRefDict(dict):
     pass
 
@@ -53,38 +54,25 @@ class EnrichOrderFn(beam.DoFn):
         yield {**element, **attr}
 
 
-with beam.Pipeline() as p:
-    shared_handle = shared.Shared()
-    (
-        p
-        | beam.Create(gen_orders(ts=datetime.now().timestamp()))
-        | beam.ParDo(EnrichOrderFn(shared_handle))
-        | beam.Map(print)
+def run(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Shared class demo with a bounded PCollection"
     )
+    _, pipeline_args = parser.parse_known_args(argv)
+    pipeline_options = PipelineOptions(pipeline_args)
 
-    logging.getLogger().setLevel(logging.INFO)
-    logging.info("Building pipeline ...")
+    with beam.Pipeline(options=pipeline_options) as p:
+        shared_handle = shared.Shared()
+        (
+            p
+            | beam.Create(gen_orders(ts=datetime.now().timestamp()))
+            | beam.ParDo(EnrichOrderFn(shared_handle))
+            | beam.Map(print)
+        )
 
-
-# def run(argv=None):
-#     parser = argparse.ArgumentParser(
-#         description="Shared class demo with a bounded PCollection"
-#     )
-#     _, pipeline_args = parser.parse_known_args(argv)
-#     pipeline_options = PipelineOptions(pipeline_args)
-
-#     with beam.Pipeline(options=pipeline_options) as p:
-#         shared_handle = shared.Shared()
-#         (
-#             p
-#             | beam.Create(gen_orders(ts=datetime.now().timestamp()))
-#             | beam.ParDo(GetNthStringFn(shared_handle))
-#             | beam.Map(print)
-#         )
-
-#         logging.getLogger().setLevel(logging.INFO)
-#         logging.info("Building pipeline ...")
+        logging.getLogger().setLevel(logging.INFO)
+        logging.info("Building pipeline ...")
 
 
-# if __name__ == "__main__":
-#     run()
+if __name__ == "__main__":
+    run()
