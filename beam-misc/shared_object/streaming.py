@@ -1,9 +1,9 @@
 import argparse
 import random
+import string
 import logging
 import time
 from datetime import datetime
-from uuid import uuid4
 
 import apache_beam as beam
 from apache_beam.utils import shared
@@ -22,9 +22,9 @@ def gen_customers(version: int, tag: float, num_cust: int = 1000):
 def gen_orders(ts: float, num_ord: int = 5, num_cust: int = 1000):
     orders = [
         {
-            "order_id": str(uuid4()),
+            "order_id": "".join(random.choices(string.ascii_lowercase, k=5)),
             "customer_id": random.randrange(1, num_cust),
-            "timestamp": ts,
+            "timestamp": int(ts),
         }
         for _ in range(num_ord)
     ]
