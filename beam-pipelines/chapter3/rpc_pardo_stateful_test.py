@@ -59,7 +59,7 @@ class RpcParDooStatefulTest(unittest.TestCase):
         options = PipelineOptions([], **pipeline_opts)
         with TestPipeline(options=options) as p:
             PARENT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-            lines = read_file("lorem-short.txt", os.path.join(PARENT_DIR, "inputs"))
+            lines = read_file("lorem.txt", os.path.join(PARENT_DIR, "inputs"))
             test_stream = TestStream(coder=coders.StrUtf8Coder()).with_output_types(str)
             for line in lines:
                 test_stream.add_elements([line])
