@@ -1,4 +1,3 @@
-import sys
 import unittest
 
 import apache_beam as beam
@@ -14,17 +13,9 @@ from apache_beam.options.pipeline_options import PipelineOptions, StandardOption
 from droppable_data_filter import (
     tokenize,
     SplitDroppable,
-    AddWindowTS,
     MAIN_OUTPUT,
     DROPPABLE_OUTPUT,
 )
-
-
-def main(out=sys.stderr, verbosity=2):
-    loader = unittest.TestLoader()
-
-    suite = loader.loadTestsFromModule(sys.modules[__name__])
-    unittest.TextTestRunner(out, verbosity=verbosity).run(suite)
 
 
 class DroppableDataFilterTest(unittest.TestCase):
@@ -53,17 +44,16 @@ class DroppableDataFilterTest(unittest.TestCase):
             outputs = (
                 p
                 | test_stream
-                | "Extract words" >> beam.FlatMap(tokenize)
+                | "ExtractWords" >> beam.FlatMap(tokenize)
                 | "Windowing"
                 >> beam.WindowInto(
                     FixedWindows(10 * 60),
                     allowed_lateness=30,
                     accumulation_mode=AccumulationMode.DISCARDING,
                 )
-                | "Spilt Droppable" >> SplitDroppable()
+                | "SpiltDroppable" >> SplitDroppable()
             )
 
-            # outputs[MAIN_OUTPUT] | beam.ParDo(AddWindowTS()) | beam.Map(print)
             main_expected = {
                 IntervalWindow(now, now + 600): ["a", "b"],
             }
@@ -90,7 +80,7 @@ class DroppableDataFilterTest(unittest.TestCase):
             )
 
 
-class DroppableDataFilterTestMore(unittest.TestCase):
+class DroppableDataFilterTestFail(unittest.TestCase):
     def test_windowing_behaviour(self):
         options = PipelineOptions()
         options.view_as(StandardOptions).streaming = True
@@ -117,15 +107,13 @@ class DroppableDataFilterTestMore(unittest.TestCase):
                     allowed_lateness=30,
                     accumulation_mode=AccumulationMode.DISCARDING,
                 )
-                | "Spilt Droppable" >> SplitDroppable()
+                | "SpiltDroppable" >> SplitDroppable()
             )
 
-            # outputs[MAIN_OUTPUT] | beam.ParDo(AddWindowTS()) | beam.Map(print)
-
             assert_that(
-                outputs[DROPPABLE_OUTPUT], equal_to(["c"]), label="assert_droppable"
+                outputs[DROPPABLE_OUTPUT], equal_to(["a"]), label="assert_droppable"
             )
 
 
 if __name__ == "__main__":
-    main(out=None)
+    unittest.main()

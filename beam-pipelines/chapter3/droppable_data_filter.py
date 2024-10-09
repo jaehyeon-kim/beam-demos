@@ -7,7 +7,6 @@ import logging
 
 import apache_beam as beam
 from apache_beam import pvalue, Windowing
-from apache_beam.io import kafka
 from apache_beam.transforms.trigger import AccumulationMode
 from apache_beam.transforms.timeutil import TimeDomain
 from apache_beam.transforms.userstate import (
@@ -25,16 +24,33 @@ from apache_beam.utils.timestamp import Timestamp
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
+from io_utils import ReadWordsFromKafka, WriteOutputsToKafka
+
 MAIN_OUTPUT = "main_output"
 DROPPABLE_OUTPUT = "droppable_output"
+
+
+def create_main_message(element: typing.Tuple[Timestamp, Timestamp, str]):
+    msg = json.dumps(
+        {
+            "start": element[0].to_utc_datetime().isoformat(timespec="seconds"),
+            "end": element[1].to_utc_datetime().isoformat(timespec="seconds"),
+            "word": element[2],
+        }
+    )
+    logging.info(f"on-time - {msg}")
+    return element[2].encode("utf-8"), msg.encode("utf-8")
+
+
+def create_droppable_message(element: str):
+    logging.info(f"droppable - {element}")
+    return element.encode("utf-8"), element.encode("utf-8")
 
 
 class SplitDroppable(beam.PTransform):
     def expand(self, pcoll):
         windowing: Windowing = pcoll.windowing
         assert windowing.windowfn != GlobalWindows
-        # print(windowing)
-        # print(windowing.accumulation_mode)
 
         def to_kv(
             element: typing.Tuple[str, Timestamp, BoundedWindow],
@@ -57,36 +73,6 @@ class SplitDroppable(beam.PTransform):
         pcolls[DROPPABLE_OUTPUT] = outputs[DROPPABLE_OUTPUT]
 
         return pcolls | Rewindow(windowing=windowing)
-
-
-class Rewindow(beam.PTransform):
-    def __init__(self, label: str | None = None, windowing: Windowing = None):
-        super().__init__(label)
-        self.windowing = windowing
-
-    def expand(self, pcolls):
-        window_fn = self.windowing.windowfn
-        allowed_lateness = self.windowing.allowed_lateness
-        # closing_behavior = self.windowing.closing_behavior # emit always
-        # on_time_behavior = self.windowing.on_time_behavior # fire always
-        timestamp_combiner = self.windowing.timestamp_combiner
-        trigger_fn = self.windowing.triggerfn
-        accumulation_mode = (
-            AccumulationMode.DISCARDING
-            if self.windowing.accumulation_mode == 1
-            else AccumulationMode.ACCUMULATING
-        )
-        main_output = pcolls[MAIN_OUTPUT] | beam.WindowInto(
-            windowfn=window_fn,
-            trigger=trigger_fn,
-            accumulation_mode=accumulation_mode,
-            timestamp_combiner=timestamp_combiner,
-            allowed_lateness=allowed_lateness,
-        )
-        return {
-            "main_output": main_output,
-            "droppable_output": pcolls[DROPPABLE_OUTPUT],
-        }
 
 
 class SplitDroppableDataFn(beam.DoFn):
@@ -125,30 +111,34 @@ class SplitDroppableDataFn(beam.DoFn):
         return float(bounds[1])
 
 
-def decode_message(kafka_kv: tuple):
-    print(kafka_kv)
-    return kafka_kv[1].decode("utf-8")
+class Rewindow(beam.PTransform):
+    def __init__(self, label: str | None = None, windowing: Windowing = None):
+        super().__init__(label)
+        self.windowing = windowing
 
-
-def tokenize(element: str):
-    return re.findall(r"[A-Za-z\']+", element)
-
-
-def create_main_message(element: typing.Tuple[Timestamp, Timestamp, str]):
-    msg = json.dumps(
-        {
-            "start": element[0].to_utc_datetime().isoformat(timespec="seconds"),
-            "end": element[1].to_utc_datetime().isoformat(timespec="seconds"),
-            "word": element[2],
+    def expand(self, pcolls):
+        window_fn = self.windowing.windowfn
+        allowed_lateness = self.windowing.allowed_lateness
+        # closing_behavior = self.windowing.closing_behavior # emit always
+        # on_time_behavior = self.windowing.on_time_behavior # fire always
+        timestamp_combiner = self.windowing.timestamp_combiner
+        trigger_fn = self.windowing.triggerfn
+        accumulation_mode = (
+            AccumulationMode.DISCARDING
+            if self.windowing.accumulation_mode == 1
+            else AccumulationMode.ACCUMULATING
+        )
+        main_output = pcolls[MAIN_OUTPUT] | beam.WindowInto(
+            windowfn=window_fn,
+            trigger=trigger_fn,
+            accumulation_mode=accumulation_mode,
+            timestamp_combiner=timestamp_combiner,
+            allowed_lateness=allowed_lateness,
+        )
+        return {
+            "main_output": main_output,
+            "droppable_output": pcolls[DROPPABLE_OUTPUT],
         }
-    )
-    print(msg)
-    return element[2].encode("utf-8"), msg.encode("utf-8")
-
-
-def create_droppable_message(element: str):
-    print(element)
-    return element.encode("utf-8"), element.encode("utf-8")
 
 
 class AddWindowTS(beam.DoFn):
@@ -156,117 +146,85 @@ class AddWindowTS(beam.DoFn):
         yield (win_param.start, win_param.end, element)
 
 
-def run():
+def run(argv=None, save_main_session=True):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
-    parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
     parser.add_argument(
-        "--use_own",
-        action="store_true",
-        default="Flag to indicate whether to use an own local cluster",
+        "--bootstrap_servers",
+        default="host.docker.internal:29092",
+        help="Kafka bootstrap server addresses",
     )
+    parser.add_argument("--input_topic", default="input-topic", help="Input topic")
     parser.add_argument(
-        "--batch_size", type=int, default=10, help="Batch size to process"
-    )
-    parser.add_argument(
-        "--max_wait_secs",
-        type=int,
-        default=4,
-        help="Maximum wait seconds before processing",
-    )
-    parser.add_argument("--input", default="input-topic", help="Input topic")
-    parser.add_argument(
-        "--job_name",
+        "--output_topic",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
-        help="Job name",
+        help="Output topic",
     )
-    opts = parser.parse_args()
-    print(opts)
-
-    pipeline_opts = {
-        "runner": opts.runner,
-        "job_name": opts.job_name,
-        "environment_type": "LOOPBACK",
-        "streaming": True,
-        "parallelism": 3,
-        "experiments": [
-            "use_deprecated_read"
-        ],  ## https://github.com/apache/beam/issues/20979
-        "checkpointing_interval": "60000",
-    }
-    if opts.use_own is True:
-        pipeline_opts = {**pipeline_opts, **{"flink_master": "localhost:8081"}}
-    print(pipeline_opts)
-    options = PipelineOptions([], **pipeline_opts)
-    # Required, else it will complain that when importing worker functions
-    options.view_as(SetupOptions).save_main_session = True
-
-    p = beam.Pipeline(options=options)
-    outputs = (
-        p
-        | "Read from Kafka"
-        >> kafka.ReadFromKafka(
-            consumer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                ),
-                "auto.offset.reset": "earliest",
-                # "enable.auto.commit": "true",
-                "group.id": opts.job_name,
-            },
-            topics=[opts.input],
-            timestamp_policy=kafka.ReadFromKafka.create_time_policy,
-        )
-        | "Decode messages" >> beam.Map(decode_message)
-        | "Extract words" >> beam.FlatMap(tokenize)
-        | "Windowing"
-        >> beam.WindowInto(
-            FixedWindows(10 * 60),
-            allowed_lateness=30,
-            accumulation_mode=AccumulationMode.DISCARDING,
-        )
-        | "Spilt droppable" >> SplitDroppable()
+    parser.add_argument(
+        "--deprecated_read",
+        action="store_true",
+        default="Whether to use a deprecated read. See https://github.com/apache/beam/issues/20979",
     )
+    parser.set_defaults(deprecated_read=False)
 
-    (
-        outputs[MAIN_OUTPUT]
-        | "Add window timestamp" >> beam.ParDo(AddWindowTS())
-        | "Create main message"
-        >> beam.Map(create_main_message).with_output_types(typing.Tuple[bytes, bytes])
-        | "Write to main topic"
-        >> kafka.WriteToKafka(
-            producer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                )
-            },
-            topic=f"{opts.job_name}_m",
+    known_args, pipeline_args = parser.parse_known_args(argv)
+
+    # # We use the save_main_session option because one or more DoFn's in this
+    # # workflow rely on global context (e.g., a module imported at module level).
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(SetupOptions).save_main_session = save_main_session
+    print(f"known args - {known_args}")
+    print(f"pipeline options - {pipeline_options.display_data()}")
+
+    with beam.Pipeline(options=pipeline_options) as p:
+        outputs = (
+            p
+            | "ReadInputsFromKafka"
+            >> ReadWordsFromKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topics=[known_args.input_topic],
+                group_id=f"{known_args.output_topic}-group",
+                deprecated_read=known_args.deprecated_read,
+            )
+            | "Windowing"
+            >> beam.WindowInto(
+                FixedWindows(10 * 60),
+                allowed_lateness=30,
+                accumulation_mode=AccumulationMode.DISCARDING,
+            )
+            | "SpiltDroppable" >> SplitDroppable()
         )
-    )
 
-    (
-        outputs[DROPPABLE_OUTPUT]
-        | "Create droppable message"
-        >> beam.Map(create_droppable_message).with_output_types(
-            typing.Tuple[bytes, bytes]
+        (
+            outputs[MAIN_OUTPUT]
+            | "AddWindowTimestamp" >> beam.ParDo(AddWindowTS())
+            | "CreateMainMessage"
+            >> beam.Map(create_main_message).with_output_types(
+                typing.Tuple[bytes, bytes]
+            )
+            | "WriteToMainTopic"
+            >> WriteOutputsToKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topic=known_args.output_topic,
+                deprecated_read=known_args.deprecated_read,
+            )
         )
-        | "Write to droppable topic"
-        >> kafka.WriteToKafka(
-            producer_config={
-                "bootstrap.servers": os.getenv(
-                    "BOOTSTRAP_SERVERS",
-                    "host.docker.internal:29092",
-                )
-            },
-            topic=f"{opts.job_name}_d",
+
+        (
+            outputs[DROPPABLE_OUTPUT]
+            | "CreateDroppableMessage"
+            >> beam.Map(create_droppable_message).with_output_types(
+                typing.Tuple[bytes, bytes]
+            )
+            | "WriteToDroppableTopic"
+            >> WriteOutputsToKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topic=known_args.output_topic,
+                deprecated_read=known_args.deprecated_read,
+            )
         )
-    )
 
-    logging.getLogger().setLevel(logging.WARN)
-    logging.info("Building pipeline ...")
-
-    p.run().wait_until_finish()
+        logging.getLogger().setLevel(logging.WARN)
+        logging.info("Building pipeline ...")
 
 
 if __name__ == "__main__":
