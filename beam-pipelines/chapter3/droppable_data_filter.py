@@ -30,14 +30,24 @@ MAIN_OUTPUT = "main_output"
 DROPPABLE_OUTPUT = "droppable_output"
 
 
+def create_message(element: typing.Tuple[Timestamp, Timestamp, str], indicator: str):
+    print(element)
+    try:
+        msg = json.dumps(
+            {
+                "start": element[0].seconds(),
+                "end": element[1].seconds(),
+                "word": element[2],
+            }
+        )
+    except Exception:
+        msg = str(element)
+    logging.info(f"{indicator} - {msg}")
+    return element[2].encode("utf-8"), msg.encode("utf-8")
+
+
 def create_main_message(element: typing.Tuple[Timestamp, Timestamp, str]):
-    msg = json.dumps(
-        {
-            "start": element[0].to_utc_datetime().isoformat(timespec="seconds"),
-            "end": element[1].to_utc_datetime().isoformat(timespec="seconds"),
-            "word": element[2],
-        }
-    )
+    msg = json.dumps({"start": element[0], "end": element[1], "word": element[2]})
     logging.info(f"on-time - {msg}")
     return element[2].encode("utf-8"), msg.encode("utf-8")
 
@@ -89,11 +99,14 @@ class SplitDroppableDataFn(beam.DoFn):
         window_gc_timer=beam.DoFn.TimerParam(WINDOW_GC_TIMER),
     ):
         too_late_for_window = too_late.read() or False
+        logging.info(f"too_late_for_window {too_late_for_window}")
         if too_late_for_window is False:
-            window_gc_timer.set(
+            timer_val = (
                 self.get_max_ts(element[0])
                 + self.windowing.allowed_lateness.micros // 1000000
             )
+            logging.info(f"window gc timer set at {timer_val}")
+            window_gc_timer.set(timer_val)
         if too_late_for_window is True:
             yield pvalue.TaggedOutput(DROPPABLE_OUTPUT, element[1])
         else:
@@ -128,7 +141,16 @@ class Rewindow(beam.PTransform):
             if self.windowing.accumulation_mode == 1
             else AccumulationMode.ACCUMULATING
         )
-        main_output = pcolls[MAIN_OUTPUT] | beam.WindowInto(
+        main_output = pcolls[MAIN_OUTPUT] | "MainWindowInto" >> beam.WindowInto(
+            windowfn=window_fn,
+            trigger=trigger_fn,
+            accumulation_mode=accumulation_mode,
+            timestamp_combiner=timestamp_combiner,
+            allowed_lateness=allowed_lateness,
+        )
+        droppable_output = pcolls[
+            DROPPABLE_OUTPUT
+        ] | "DroppableWindowInto" >> beam.WindowInto(
             windowfn=window_fn,
             trigger=trigger_fn,
             accumulation_mode=accumulation_mode,
@@ -137,8 +159,12 @@ class Rewindow(beam.PTransform):
         )
         return {
             "main_output": main_output,
-            "droppable_output": pcolls[DROPPABLE_OUTPUT],
+            "droppable_output": droppable_output,
         }
+        # return {
+        #     "main_output": main_output,
+        #     "droppable_output": pcolls[DROPPABLE_OUTPUT],
+        # }
 
 
 class AddWindowTS(beam.DoFn):
@@ -198,13 +224,13 @@ def run(argv=None, save_main_session=True):
             outputs[MAIN_OUTPUT]
             | "AddWindowTimestamp" >> beam.ParDo(AddWindowTS())
             | "CreateMainMessage"
-            >> beam.Map(create_main_message).with_output_types(
+            >> beam.Map(create_message, indicator="main").with_output_types(
                 typing.Tuple[bytes, bytes]
             )
             | "WriteToMainTopic"
             >> WriteOutputsToKafka(
                 bootstrap_servers=known_args.bootstrap_servers,
-                topic=known_args.output_topic,
+                topic=f"{known_args.output_topic}-normal",
                 deprecated_read=known_args.deprecated_read,
             )
         )
@@ -212,18 +238,18 @@ def run(argv=None, save_main_session=True):
         (
             outputs[DROPPABLE_OUTPUT]
             | "CreateDroppableMessage"
-            >> beam.Map(create_droppable_message).with_output_types(
+            >> beam.Map(create_message, indicator="droppable").with_output_types(
                 typing.Tuple[bytes, bytes]
             )
             | "WriteToDroppableTopic"
             >> WriteOutputsToKafka(
                 bootstrap_servers=known_args.bootstrap_servers,
-                topic=known_args.output_topic,
+                topic=f"{known_args.output_topic}-droppable",
                 deprecated_read=known_args.deprecated_read,
             )
         )
 
-        logging.getLogger().setLevel(logging.WARN)
+        logging.getLogger().setLevel(logging.INFO)
         logging.info("Building pipeline ...")
 
 

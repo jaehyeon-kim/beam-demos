@@ -17,16 +17,16 @@ def get_ts_shift(shift: str):
     multiplier = 1
     if shift.find("m") > 0:
         multiplier = 60 * 1000
-        digit = get_digit(shift, r"m.+")
+        digit = get_digit(shift, r"m.+|m+")
     elif shift.find("s") > 0:
         multiplier = 1000
-        digit = get_digit(shift, r"s.+")
+        digit = get_digit(shift, r"s.+|s+")
     else:
         digit = get_digit(shift)
     return {
-        "current": current,
-        "shift": int(digit) * multiplier,
-        "shifted": current + int(digit) * multiplier,
+        "current": current // 1000,
+        "shift": f"{digit * multiplier} ms",
+        "shifted": (current + digit * multiplier) // 1000,
     }
 
 
