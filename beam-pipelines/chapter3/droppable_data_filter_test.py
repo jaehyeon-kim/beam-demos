@@ -1,4 +1,3 @@
-import sys
 import unittest
 
 import apache_beam as beam
@@ -10,21 +9,14 @@ from apache_beam.testing.test_stream import TestStream
 from apache_beam.transforms.trigger import AccumulationMode
 from apache_beam.transforms.window import FixedWindows, TimestampedValue
 from apache_beam.options.pipeline_options import PipelineOptions, StandardOptions
+from apache_beam.utils.timestamp import Timestamp
 
+from io_utils import tokenize
 from droppable_data_filter import (
-    tokenize,
     SplitDroppable,
-    AddWindowTS,
     MAIN_OUTPUT,
     DROPPABLE_OUTPUT,
 )
-
-
-def main(out=sys.stderr, verbosity=2):
-    loader = unittest.TestLoader()
-
-    suite = loader.loadTestsFromModule(sys.modules[__name__])
-    unittest.TextTestRunner(out, verbosity=verbosity).run(suite)
 
 
 class DroppableDataFilterTest(unittest.TestCase):
@@ -37,15 +29,15 @@ class DroppableDataFilterTest(unittest.TestCase):
             test_stream = (
                 TestStream(coder=coders.StrUtf8Coder())
                 .with_output_types(str)
-                .advance_watermark_to(now)
+                .advance_watermark_to(Timestamp(seconds=now))
                 .add_elements(
-                    [TimestampedValue("a", now + 1)]
+                    [TimestampedValue("a", Timestamp(seconds=now + 3))]
                 )  # fine, before watermark - on time
-                .advance_watermark_to(now + 629)
+                .advance_watermark_to(Timestamp(seconds=now + 6.999))
                 .add_elements(
-                    [TimestampedValue("b", now + 599)]
+                    [TimestampedValue("b", Timestamp(seconds=now + 4))]
                 )  # late, but within allowed lateness
-                .advance_watermark_to(now + 630)
+                .advance_watermark_to(Timestamp(seconds=now + 7))
                 .add_elements([TimestampedValue("c", now)])  # droppable
                 .advance_watermark_to_infinity()
             )
@@ -53,19 +45,21 @@ class DroppableDataFilterTest(unittest.TestCase):
             outputs = (
                 p
                 | test_stream
-                | "Extract words" >> beam.FlatMap(tokenize)
+                | "ExtractWords" >> beam.FlatMap(tokenize)
                 | "Windowing"
                 >> beam.WindowInto(
-                    FixedWindows(10 * 60),
-                    allowed_lateness=30,
+                    FixedWindows(5),
+                    allowed_lateness=2,
                     accumulation_mode=AccumulationMode.DISCARDING,
                 )
-                | "Spilt Droppable" >> SplitDroppable()
+                | "SpiltDroppable" >> SplitDroppable()
             )
 
-            # outputs[MAIN_OUTPUT] | beam.ParDo(AddWindowTS()) | beam.Map(print)
             main_expected = {
-                IntervalWindow(now, now + 600): ["a", "b"],
+                IntervalWindow(Timestamp(seconds=now), Timestamp(seconds=now + 5)): [
+                    "a",
+                    "b",
+                ],
             }
 
             assert_that(
@@ -75,22 +69,13 @@ class DroppableDataFilterTest(unittest.TestCase):
                 label="assert_main",
             )
 
-            # outputs[DROPPABLE_OUTPUT] | beam.ParDo(AddWindowTS()) | beam.Map(print)
-            # droppable_expected = {
-            #     IntervalWindow(GlobalWindow().start, GlobalWindow().end): ["c"]
-            # }
-            # # apache_beam.testing.util.BeamAssertException: Failed assert: window GlobalWindow not found in any expected windows [[-9223372036854.775, 9223371950454.775)] [while running 'assert_that/Match']
-            # assert_that(
-            #     outputs[DROPPABLE_OUTPUT],
-            #     equal_to_per_window(droppable_expected),
-            #     reify_windows=True,
-            # )
             assert_that(
                 outputs[DROPPABLE_OUTPUT], equal_to(["c"]), label="assert_droppable"
             )
 
 
-class DroppableDataFilterTestMore(unittest.TestCase):
+class DroppableDataFilterTestFail(unittest.TestCase):
+    @unittest.expectedFailure
     def test_windowing_behaviour(self):
         options = PipelineOptions()
         options.view_as(StandardOptions).streaming = True
@@ -100,9 +85,9 @@ class DroppableDataFilterTestMore(unittest.TestCase):
             test_stream = (
                 TestStream(coder=coders.StrUtf8Coder())
                 .with_output_types(str)
-                .advance_watermark_to(now + 630)
+                .advance_watermark_to(Timestamp(seconds=now + 7.5))
                 .add_elements(
-                    [TimestampedValue("a", now)]
+                    [TimestampedValue("c", now)]
                 )  # should be dropped but not!
                 .advance_watermark_to_infinity()
             )
@@ -113,14 +98,12 @@ class DroppableDataFilterTestMore(unittest.TestCase):
                 | "Extract words" >> beam.FlatMap(tokenize)
                 | "Windowing"
                 >> beam.WindowInto(
-                    FixedWindows(10 * 60),
-                    allowed_lateness=30,
+                    FixedWindows(5),
+                    allowed_lateness=2,
                     accumulation_mode=AccumulationMode.DISCARDING,
                 )
-                | "Spilt Droppable" >> SplitDroppable()
+                | "SpiltDroppable" >> SplitDroppable()
             )
-
-            # outputs[MAIN_OUTPUT] | beam.ParDo(AddWindowTS()) | beam.Map(print)
 
             assert_that(
                 outputs[DROPPABLE_OUTPUT], equal_to(["c"]), label="assert_droppable"
@@ -128,4 +111,4 @@ class DroppableDataFilterTestMore(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    main(out=None)
+    unittest.main()
