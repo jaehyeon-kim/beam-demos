@@ -9,38 +9,37 @@ def get_digit(shift: str, pattern: str = None):
     try:
         return int(re.sub(pattern, "", shift).strip())
     except (TypeError, ValueError):
-        return 1
+        return 0
 
 
-def get_ts_shift(shift: str):
-    current = int(time.time() * 1000)
+def get_ts_shift(shift: str = None):
+    current = int(time.time())
     multiplier = 1
     if shift.find("m") > 0:
-        multiplier = 60 * 1000
+        multiplier = 60
         digit = get_digit(shift, r"m.+|m+")
     elif shift.find("s") > 0:
-        multiplier = 1000
         digit = get_digit(shift, r"s.+|s+")
     else:
         digit = get_digit(shift)
     return {
-        "current": current // 1000,
-        "shift": f"{digit * multiplier} ms",
-        "shifted": (current + digit * multiplier) // 1000,
+        "current": current,
+        "shift": f"{digit * multiplier} secs",
+        "shifted": (current + digit * multiplier),
     }
 
 
 def parse_user_input(user_input: str):
     if len(user_input.split(";")) == 2:
         shift, text = tuple(user_input.split(";"))
-        shift_info = get_ts_shift(shift)
-        msg = " | ".join(
-            [f"{k}: {v}" for k, v in {**{"text": text.strip()}, **shift_info}.items()]
-        )
-        print(f">> {msg}")
-        return {"text": text.strip(), "timestamp_ms": shift_info["shifted"]}
-    print(f">> text: {user_input}")
-    return {"text": user_input}
+    else:
+        shift, text = "", user_input
+    shift_info = get_ts_shift(shift)
+    msg = " | ".join(
+        [f"{k}: {v}" for k, v in {**{"text": text.strip()}, **shift_info}.items()]
+    )
+    print(f">> {msg}")
+    return {"text": text.strip(), "timestamp_ms": shift_info["shifted"] * 1000}
 
 
 if __name__ == "__main__":

@@ -30,9 +30,10 @@ MAIN_OUTPUT = "main_output"
 DROPPABLE_OUTPUT = "droppable_output"
 
 
-def create_message(element: typing.Tuple[Timestamp, Timestamp, str], indicator: str):
-    print(element)
-    try:
+def create_message(
+    element: typing.Union[typing.Tuple[Timestamp, Timestamp, str], str], is_main: bool
+):
+    if is_main:
         msg = json.dumps(
             {
                 "start": element[0].seconds(),
@@ -40,21 +41,12 @@ def create_message(element: typing.Tuple[Timestamp, Timestamp, str], indicator: 
                 "word": element[2],
             }
         )
-    except Exception:
-        msg = str(element)
-    logging.info(f"{indicator} - {msg}")
-    return element[2].encode("utf-8"), msg.encode("utf-8")
-
-
-def create_main_message(element: typing.Tuple[Timestamp, Timestamp, str]):
-    msg = json.dumps({"start": element[0], "end": element[1], "word": element[2]})
-    logging.info(f"on-time - {msg}")
-    return element[2].encode("utf-8"), msg.encode("utf-8")
-
-
-def create_droppable_message(element: str):
-    logging.info(f"droppable - {element}")
-    return element.encode("utf-8"), element.encode("utf-8")
+        key = element[2]
+    else:
+        msg = element
+        key = msg
+    logging.info(f"{'main' if is_main else 'droppable'} message - {msg}")
+    return key.encode("utf-8"), msg.encode("utf-8")
 
 
 class SplitDroppable(beam.PTransform):
@@ -98,14 +90,13 @@ class SplitDroppableDataFn(beam.DoFn):
         too_late=beam.DoFn.StateParam(TOO_LATE),
         window_gc_timer=beam.DoFn.TimerParam(WINDOW_GC_TIMER),
     ):
+        max_ts = self.get_max_ts(element[0])
+        allowed_lateness_sec = self.windowing.allowed_lateness.micros // 1000000
         too_late_for_window = too_late.read() or False
-        logging.info(f"too_late_for_window {too_late_for_window}")
+        logging.info(f"string (value) - {element[1]}, window (key) {element[0]}")
         if too_late_for_window is False:
-            timer_val = (
-                self.get_max_ts(element[0])
-                + self.windowing.allowed_lateness.micros // 1000000
-            )
-            logging.info(f"window gc timer set at {timer_val}")
+            timer_val = max_ts + allowed_lateness_sec
+            logging.info(f"set up eow timer at {timer_val}")
             window_gc_timer.set(timer_val)
         if too_late_for_window is True:
             yield pvalue.TaggedOutput(DROPPABLE_OUTPUT, element[1])
@@ -148,23 +139,10 @@ class Rewindow(beam.PTransform):
             timestamp_combiner=timestamp_combiner,
             allowed_lateness=allowed_lateness,
         )
-        droppable_output = pcolls[
-            DROPPABLE_OUTPUT
-        ] | "DroppableWindowInto" >> beam.WindowInto(
-            windowfn=window_fn,
-            trigger=trigger_fn,
-            accumulation_mode=accumulation_mode,
-            timestamp_combiner=timestamp_combiner,
-            allowed_lateness=allowed_lateness,
-        )
         return {
             "main_output": main_output,
-            "droppable_output": droppable_output,
+            "droppable_output": pcolls[DROPPABLE_OUTPUT],
         }
-        # return {
-        #     "main_output": main_output,
-        #     "droppable_output": pcolls[DROPPABLE_OUTPUT],
-        # }
 
 
 class AddWindowTS(beam.DoFn):
@@ -180,6 +158,8 @@ def run(argv=None, save_main_session=True):
         help="Kafka bootstrap server addresses",
     )
     parser.add_argument("--input_topic", default="input-topic", help="Input topic")
+    parser.add_argument("--window_length", default=5, type=int, help="Input topic")
+    parser.add_argument("--allowed_lateness", default=2, type=int, help="Input topic")
     parser.add_argument(
         "--output_topic",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
@@ -213,8 +193,8 @@ def run(argv=None, save_main_session=True):
             )
             | "Windowing"
             >> beam.WindowInto(
-                FixedWindows(10 * 60),
-                allowed_lateness=30,
+                FixedWindows(known_args.window_length),
+                allowed_lateness=known_args.allowed_lateness,
                 accumulation_mode=AccumulationMode.DISCARDING,
             )
             | "SpiltDroppable" >> SplitDroppable()
@@ -224,13 +204,13 @@ def run(argv=None, save_main_session=True):
             outputs[MAIN_OUTPUT]
             | "AddWindowTimestamp" >> beam.ParDo(AddWindowTS())
             | "CreateMainMessage"
-            >> beam.Map(create_message, indicator="main").with_output_types(
+            >> beam.Map(create_message, is_main=True).with_output_types(
                 typing.Tuple[bytes, bytes]
             )
             | "WriteToMainTopic"
             >> WriteOutputsToKafka(
                 bootstrap_servers=known_args.bootstrap_servers,
-                topic=f"{known_args.output_topic}-normal",
+                topic="output-normal-topic",
                 deprecated_read=known_args.deprecated_read,
             )
         )
@@ -238,13 +218,13 @@ def run(argv=None, save_main_session=True):
         (
             outputs[DROPPABLE_OUTPUT]
             | "CreateDroppableMessage"
-            >> beam.Map(create_message, indicator="droppable").with_output_types(
+            >> beam.Map(create_message, is_main=False).with_output_types(
                 typing.Tuple[bytes, bytes]
             )
             | "WriteToDroppableTopic"
             >> WriteOutputsToKafka(
                 bootstrap_servers=known_args.bootstrap_servers,
-                topic=f"{known_args.output_topic}-droppable",
+                topic="output-droppable-topic",
                 deprecated_read=known_args.deprecated_read,
             )
         )
