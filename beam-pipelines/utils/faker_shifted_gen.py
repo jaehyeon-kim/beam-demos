@@ -40,12 +40,12 @@ if __name__ == "__main__":
     fake = Faker()
     Faker.seed(1237)
 
-    num_events = 0
     while True:
-        num_events += 1
         text = fake.text(max_nb_chars=10)
         current = int(time.time())
-        shift = fake.random_element(range(args.max_shift_seconds))
+        shift = 0
+        if fake.random_int(min=0, max=9) < 2:
+            shift = fake.random_element(range(args.max_shift_seconds))
         shifted = current - shift
         producer.send_to_kafka(text=text, timestamp_ms=shifted * 1000)
         print(
