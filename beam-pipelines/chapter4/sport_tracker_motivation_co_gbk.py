@@ -15,8 +15,6 @@ from sport_tracker_utils import (
     WriteNotificationsToKafka,
     ComputeBoxedMetrics,
     MeanPaceCombineFn,
-    ElemToKV,
-    MetricToKV,
 )
 
 
@@ -53,8 +51,8 @@ class SportTrackerMotivation(beam.PTransform):
                 else:
                     status = "outperforming"
             if self.verbose and element[0] == "user0":
-                print(
-                    f"key {element[0]} short {short_avg}, long {long_avg}, status {status}"
+                logging.info(
+                    f"SportTrackerMotivation track {element[0]}, short average {round(short_avg, 2)}, long average {round(long_avg, 2)}, status - {status}"
                 )
             if status is None:
                 return []
@@ -64,24 +62,14 @@ class SportTrackerMotivation(beam.PTransform):
         short_average = (
             boxed
             | "ShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
-            # | "ShortElemToKV" >> ElemToKV(indicator="short", verbose=self.verbose)
             | "ShortAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
-            # | "SortMericToKV"
-            # >> MetricToKV(indicator="short", verbose=self.verbose).with_input_types(
-            #     typing.Tuple[str, float]
-            # )
         )
         long_average = (
             boxed
             | "LongWindow"
             >> beam.WindowInto(SlidingWindows(self.long_duration, self.short_duration))
-            # | "LongElemToKV" >> ElemToKV(indicator="long", verbose=self.verbose)
             | "LongAverage" >> beam.CombinePerKey(MeanPaceCombineFn())
             | "MatchToShortWindow" >> beam.WindowInto(FixedWindows(self.short_duration))
-            # | "LongMericToKV"
-            # >> MetricToKV(indicator="long", verbose=self.verbose).with_input_types(
-            #     typing.Tuple[str, float]
-            # )
         )
         return (
             (short_average, long_average)
@@ -90,69 +78,66 @@ class SportTrackerMotivation(beam.PTransform):
         )
 
 
-def run():
+def run(argv=None, save_main_session=True):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
-    parser.add_argument("--runner", default="FlinkRunner", help="Apache Beam runner")
     parser.add_argument(
-        "--use_own",
-        action="store_true",
-        default="Flag to indicate whether to use an own local cluster",
+        "--bootstrap_servers",
+        default="host.docker.internal:29092",
+        help="Kafka bootstrap server addresses",
     )
-    parser.add_argument("--input", default="input-topic", help="Input topic")
+    parser.add_argument("--input_topic", default="input-topic", help="Input topic")
     parser.add_argument(
-        "--job_name",
+        "--output_topic",
         default=re.sub("_", "-", re.sub(".py$", "", os.path.basename(__file__))),
-        help="Job name",
+        help="Output topic",
     )
-    opts = parser.parse_args()
-    print(opts)
-
-    pipeline_opts = {
-        "runner": opts.runner,
-        "job_name": opts.job_name,
-        "environment_type": "LOOPBACK",
-        "streaming": True,
-        "parallelism": 3,
-        "experiments": [
-            "use_deprecated_read"
-        ],  ## https://github.com/apache/beam/issues/20979
-        "checkpointing_interval": "60000",
-    }
-    if opts.use_own is True:
-        pipeline_opts = {**pipeline_opts, **{"flink_master": "localhost:8081"}}
-    print(pipeline_opts)
-    options = PipelineOptions([], **pipeline_opts)
-    # Required, else it will complain that when importing worker functions
-    options.view_as(SetupOptions).save_main_session = True
-
-    p = beam.Pipeline(options=options)
-    (
-        p
-        | "ReadPositions"
-        >> ReadPositionsFromKafka(
-            bootstrap_servers=os.getenv(
-                "BOOTSTRAP_SERVERS",
-                "host.docker.internal:29092",
-            ),
-            topics=[opts.input],
-            group_id=opts.job_name,
-        )
-        | "SportsTrackerMotivation"
-        >> SportTrackerMotivation(short_duration=20, long_duration=100)
-        | "WriteNotifications"
-        >> WriteNotificationsToKafka(
-            bootstrap_servers=os.getenv(
-                "BOOTSTRAP_SERVERS",
-                "host.docker.internal:29092",
-            ),
-            topic=opts.job_name,
-        )
+    parser.add_argument("--short_duration", default=20, type=int, help="Input topic")
+    parser.add_argument("--long_duration", default=100, type=int, help="Input topic")
+    parser.add_argument(
+        "--verbose", action="store_true", default="Whether to enable log messages"
     )
+    parser.set_defaults(verbose=False)
+    parser.add_argument(
+        "--deprecated_read",
+        action="store_true",
+        default="Whether to use a deprecated read. See https://github.com/apache/beam/issues/20979",
+    )
+    parser.set_defaults(deprecated_read=False)
 
-    logging.getLogger().setLevel(logging.WARN)
-    logging.info("Building pipeline ...")
+    known_args, pipeline_args = parser.parse_known_args(argv)
 
-    p.run().wait_until_finish()
+    # # We use the save_main_session option because one or more DoFn's in this
+    # # workflow rely on global context (e.g., a module imported at module level).
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(SetupOptions).save_main_session = save_main_session
+    print(f"known args - {known_args}")
+    print(f"pipeline options - {pipeline_options.display_data()}")
+
+    with beam.Pipeline(options=pipeline_options) as p:
+        (
+            p
+            | "ReadPositions"
+            >> ReadPositionsFromKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topics=[known_args.input_topic],
+                group_id=f"{known_args.output_topic}-group",
+                deprecated_read=known_args.deprecated_read,
+            )
+            | "SportsTrackerMotivation"
+            >> SportTrackerMotivation(
+                short_duration=known_args.short_duration,
+                long_duration=known_args.long_duration,
+                verbose=known_args.verbose,
+            )
+            | "WriteNotifications"
+            >> WriteNotificationsToKafka(
+                bootstrap_servers=known_args.bootstrap_servers,
+                topic=known_args.output_topic,
+            )
+        )
+
+        logging.getLogger().setLevel(logging.INFO)
+        logging.info("Building pipeline ...")
 
 
 if __name__ == "__main__":

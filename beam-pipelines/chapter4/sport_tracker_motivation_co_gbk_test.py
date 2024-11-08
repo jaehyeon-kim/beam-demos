@@ -1,9 +1,7 @@
-import sys
 import typing
 import unittest
 from itertools import chain
 
-import apache_beam as beam
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that, equal_to
 from apache_beam.testing.test_stream import TestStream
@@ -12,13 +10,6 @@ from apache_beam.options.pipeline_options import PipelineOptions, StandardOption
 
 from sport_tracker_utils import Position
 from sport_tracker_motivation_co_gbk import SportTrackerMotivation
-
-
-def main(out=sys.stderr, verbosity=2):
-    loader = unittest.TestLoader()
-
-    suite = loader.loadTestsFromModule(sys.modules[__name__])
-    unittest.TextTestRunner(out, verbosity=verbosity).run(suite)
 
 
 class SportTrackerMotivationTest(unittest.TestCase):
@@ -103,4 +94,4 @@ class SportTrackerMotivationTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    main(out=None)
+    unittest.main()

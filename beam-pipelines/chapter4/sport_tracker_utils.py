@@ -3,6 +3,7 @@ import json
 import random
 import time
 import typing
+import logging
 
 import apache_beam as beam
 from apache_beam.io import kafka
@@ -81,13 +82,13 @@ class ToMetricFn(beam.DoFn):
     ):
         min_ts: Timestamp = min_timestamp.read()
         if min_ts is None:
+            if self.verbose and element[0] == "user0":
+                logging.info(
+                    f"ToMetricFn set flush timer for {element[0]} at {timestamp}"
+                )
             min_timestamp.write(timestamp)
             flush_timer.set(timestamp)
         buffer.add(element[1])
-        if self.verbose and element[0] == "user0":
-            print(
-                f">>>>ToMetricFn.process<<<< key {element[0]} ts {element[1].timestamp}"
-            )
 
     @on_timer(FLUSH_TIMER)
     def flush(
@@ -100,7 +101,9 @@ class ToMetricFn(beam.DoFn):
         for item in buffer.read():
             items.append(item)
             if self.verbose and key == "user0":
-                print(f">>>>ToMetricFn.flush  <<<< key {key} ts {item.timestamp}")
+                logging.info(
+                    f"ToMetricFn flush track {key}, ts {item.timestamp}, num items {len(items)}"
+                )
 
         items = list(sorted(items, key=lambda p: p.timestamp))
         outputs = list(self.flush_metrics(items, key))
@@ -181,6 +184,7 @@ class ReadPositionsFromKafka(beam.PTransform):
         bootstrap_servers: str,
         topics: typing.List[str],
         group_id: str,
+        deprecated_read: bool,
         verbose: bool = False,
         label: str | None = None,
     ):
@@ -189,6 +193,11 @@ class ReadPositionsFromKafka(beam.PTransform):
         self.topics = topics
         self.group_id = group_id
         self.verbose = verbose
+        self.expansion_service = None
+        if deprecated_read:
+            self.expansion_service = kafka.default_io_expansion_service(
+                ["--experiments=use_deprecated_read"]
+            )
 
     def expand(self, input: pvalue.PBegin):
         def decode_message(kafka_kv: tuple):
@@ -202,7 +211,7 @@ class ReadPositionsFromKafka(beam.PTransform):
             >> kafka.ReadFromKafka(
                 consumer_config={
                     "bootstrap.servers": self.boostrap_servers,
-                    "auto.offset.reset": "earliest",
+                    "auto.offset.reset": "latest",
                     # "enable.auto.commit": "true",
                     "group.id": self.group_id,
                 },
@@ -233,9 +242,9 @@ class WriteNotificationsToKafka(beam.PTransform):
 
         return (
             pcoll
-            | "CreateMsg"
+            | "CreateMessage"
             >> beam.Map(create_message).with_output_types(typing.Tuple[bytes, bytes])
-            | "Write to Kafka"
+            | "WriteToKafka"
             >> kafka.WriteToKafka(
                 producer_config={"bootstrap.servers": self.boostrap_servers},
                 topic=self.topic,
