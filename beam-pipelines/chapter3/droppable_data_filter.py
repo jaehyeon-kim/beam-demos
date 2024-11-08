@@ -225,7 +225,7 @@ def run(argv=None, save_main_session=True):
             >> WriteOutputsToKafka(
                 bootstrap_servers=known_args.bootstrap_servers,
                 topic="output-droppable-topic",
-                deprecated_read=known_args.deprecated_read,
+                deprecated_read=known_args.deprecated_read,  # TO DO: remove as it applies only to ReadFromKafka
             )
         )
 
