@@ -260,7 +260,7 @@ class ElemToKV(beam.PTransform):
 
     def expand(self, pcoll: pvalue.PCollection):
         def elem_to_kv(
-            element: typing.Tuple[typing.Tuple[str, Metric], Timestamp, BoundedWindow],
+            element,  #: typing.Tuple[typing.Tuple[str, Metric], Timestamp, BoundedWindow],
         ) -> typing.Tuple[str, Metric]:
             value, timestamp, window = element
             if self.verbose and value[0] == "user0":
