@@ -60,7 +60,7 @@ class SportTrackerMotivation(beam.PTransform):
                     status = "outperforming"
             if self.verbose and element[0] == "user0":
                 logging.info(
-                    f"SportTrackerMotivation track {element[0]}, short average {round(short_avg, 2)}, long average {round(long_avg, 2)}, status - {status}"
+                    f"SportTrackerMotivation track {element[0]}, short average {short_avg}, long average {long_avg}, status - {status}"
                 )
             if status is None:
                 return []

@@ -9,7 +9,7 @@ import apache_beam as beam
 from apache_beam.io import kafka
 from apache_beam import pvalue
 from apache_beam.transforms.util import Reify
-from apache_beam.transforms.window import GlobalWindows, TimestampedValue, BoundedWindow
+from apache_beam.transforms.window import GlobalWindows, TimestampedValue
 from apache_beam.transforms.timeutil import TimeDomain
 from apache_beam.transforms.userstate import (
     ReadModifyWriteStateSpec,
