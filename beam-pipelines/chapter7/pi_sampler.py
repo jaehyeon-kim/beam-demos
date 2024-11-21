@@ -45,51 +45,45 @@ class PiSamplerDoFn(beam.DoFn, RestrictionProvider):
         return restriction.size()
 
 
-def run():
+def run(argv=None, save_main_session=True):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
-    parser.add_argument("--runner", default="DirectRunner", help="Apache Beam runner")
     parser.add_argument(
         "-p", "--parallelism", type=int, default=100, help="Number of parallelism"
     )
     parser.add_argument(
         "-n", "--num_samples", type=int, default=10000, help="Number of samples"
     )
-    opts = parser.parse_args()
-    print(opts)
 
-    pipeline_opts = {
-        "runner": opts.runner,
-        "environment_type": "LOOPBACK",
-        "streaming": False,
-    }
-    print(pipeline_opts)
-    options = PipelineOptions([], **pipeline_opts)
-    # Required, else it will complain that when importing worker functions
-    options.view_as(SetupOptions).save_main_session = True
+    known_args, pipeline_args = parser.parse_known_args(argv)
 
-    PARENT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    # # We use the save_main_session option because one or more DoFn's in this
+    # # workflow rely on global context (e.g., a module imported at module level).
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(SetupOptions).save_main_session = save_main_session
+    print(f"known args - {known_args}")
+    print(f"pipeline options - {pipeline_options.display_data()}")
 
-    p = beam.Pipeline(options=options)
-    (
-        p
-        | beam.Create([os.path.join(PARENT_DIR, "inputs")])
-        | beam.ParDo(
-            GenerateExperiments(
-                parallelism=opts.parallelism, num_samples=opts.num_samples
+    with beam.Pipeline(options=pipeline_options) as p:
+        (
+            p
+            | beam.Create([0])
+            | beam.ParDo(
+                GenerateExperiments(
+                    parallelism=known_args.parallelism,
+                    num_samples=known_args.num_samples,
+                )
             )
+            | beam.ParDo(PiSamplerDoFn())
+            | beam.CombineGlobally(sum)
+            | beam.Map(
+                lambda e: 4
+                * (1 - e / (known_args.num_samples * known_args.parallelism))
+            )
+            | beam.Map(print)
         )
-        | beam.ParDo(PiSamplerDoFn())
-        | beam.CombineGlobally(sum)
-        | beam.Map(
-            lambda e: round(4 * (1 - e / (opts.num_samples * opts.parallelism)), 2)
-        )
-        | beam.Map(print)
-    )
 
-    logging.getLogger().setLevel(logging.INFO)
-    logging.info("Building pipeline ...")
-
-    p.run().wait_until_finish()
+        logging.getLogger().setLevel(logging.INFO)
+        logging.info("Building pipeline ...")
 
 
 if __name__ == "__main__":

@@ -9,36 +9,36 @@ from apache_beam.options.pipeline_options import SetupOptions
 from file_read import GenerateFilesFn, ProcessFilesFn
 
 
-def run():
+def run(argv=None, save_main_session=True):
     parser = argparse.ArgumentParser(description="Beam pipeline arguments")
-    parser.add_argument("--runner", default="DirectRunner", help="Apache Beam runner")
-    opts = parser.parse_args()
-    print(opts)
-
-    pipeline_opts = {
-        "runner": opts.runner,
-        "environment_type": "LOOPBACK",
-        "streaming": False,
-    }
-    print(pipeline_opts)
-    options = PipelineOptions([], **pipeline_opts)
-    # Required, else it will complain that when importing worker functions
-    options.view_as(SetupOptions).save_main_session = True
-
-    PARENT_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-
-    p = beam.Pipeline(options=options)
-    (
-        p
-        | beam.Create([os.path.join(PARENT_DIR, "inputs")])
-        | beam.ParDo(GenerateFilesFn())
-        | beam.ParDo(ProcessFilesFn())
+    parser.add_argument(
+        "-p",
+        "--file_path",
+        default=os.path.join(
+            os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "fake_files"
+        ),
+        help="File path",
     )
 
-    logging.getLogger().setLevel(logging.WARN)
-    logging.info("Building pipeline ...")
+    known_args, pipeline_args = parser.parse_known_args(argv)
 
-    p.run().wait_until_finish()
+    # # We use the save_main_session option because one or more DoFn's in this
+    # # workflow rely on global context (e.g., a module imported at module level).
+    pipeline_options = PipelineOptions(pipeline_args)
+    pipeline_options.view_as(SetupOptions).save_main_session = save_main_session
+    print(f"known args - {known_args}")
+    print(f"pipeline options - {pipeline_options.display_data()}")
+
+    with beam.Pipeline(options=pipeline_options) as p:
+        (
+            p
+            | beam.Create([known_args.file_path])
+            | beam.ParDo(GenerateFilesFn())
+            | beam.ParDo(ProcessFilesFn())
+        )
+
+        logging.getLogger().setLevel(logging.WARN)
+        logging.info("Building pipeline ...")
 
 
 if __name__ == "__main__":

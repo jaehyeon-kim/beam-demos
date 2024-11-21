@@ -3,3 +3,4 @@ flink-1.18.1
 inputs/*.out
 outputs/*.out
 flink-savepoints
+fake_files
