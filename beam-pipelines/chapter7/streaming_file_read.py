@@ -38,7 +38,7 @@ def run(argv=None, save_main_session=True):
             | beam.ParDo(ProcessFilesFn())
         )
 
-        logging.getLogger().setLevel(logging.WARN)
+        logging.getLogger().setLevel(logging.INFO)
         logging.info("Building pipeline ...")
 
 

@@ -1,5 +1,6 @@
 import os
 import typing
+import logging
 
 import apache_beam as beam
 from apache_beam import RestrictionProvider
@@ -18,7 +19,6 @@ class GenerateFilesFn(beam.DoFn):
             if os.path.isfile(os.path.join(element, file)):
                 num_lines = sum(1 for _ in open(os.path.join(element, file)))
                 new_file = MyFile(file, 0, num_lines)
-                print(new_file)
                 yield new_file
 
 
@@ -32,7 +32,7 @@ class ProcessFilesFn(beam.DoFn, RestrictionProvider):
         for current_position in range(restriction.start, restriction.stop + 1):
             if tracker.try_claim(current_position):
                 m = f"file: {element.name}, position: {current_position}"
-                print(m)
+                logging.info(m)
                 yield m
             else:
                 return

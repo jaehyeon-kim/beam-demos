@@ -1,4 +1,3 @@
-import os
 import random
 import logging
 import argparse
@@ -16,7 +15,9 @@ class GenerateExperiments(beam.DoFn):
         self.num_samples = num_samples
 
     def process(self, ignored_element):
-        for _ in range(self.parallelism):
+        for i in range(self.parallelism):
+            if (i + 1) % 10 == 0:
+                logging.info(f"sending {i + 1}th experiment")
             yield self.num_samples
 
 
