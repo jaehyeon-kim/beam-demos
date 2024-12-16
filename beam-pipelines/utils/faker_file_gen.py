@@ -6,10 +6,6 @@ import logging
 
 from faker import Faker
 
-file_path = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "fake_files"
-)
-
 
 def create_folder(file_path: str):
     shutil.rmtree(file_path, ignore_errors=True)
