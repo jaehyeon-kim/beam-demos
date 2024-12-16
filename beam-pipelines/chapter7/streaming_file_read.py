@@ -3,6 +3,7 @@ import logging
 import argparse
 
 import apache_beam as beam
+from apache_beam.transforms.util import Reshuffle
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.options.pipeline_options import SetupOptions
 
@@ -35,6 +36,7 @@ def run(argv=None, save_main_session=True):
             p
             | beam.Create([known_args.file_path])
             | beam.ParDo(DirectoryWatchFn())
+            | Reshuffle()
             | beam.ParDo(ProcessFilesFn())
         )
 
