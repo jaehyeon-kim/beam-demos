@@ -23,4 +23,13 @@ Flink Kubernetes Operator acts as a control plane to manage the complete deploym
 
 Implement tasks in [Building Big Data Pipelines with Apache Beam](https://www.packtpub.com/product/building-big-data-pipelines-with-apache-beam/9781800564930) using the Beam Python SDK.
 
-👷‍♂️ 🛠️ 👨‍🔧
+- [Part 1 Calculate K Most Frequent Words and Max Word Length](https://jaehyeon.me/blog/2024-07-04-beam-examples-1)
+- [Part 2 Calculate Average Word Length with/without Fixed Look back](https://jaehyeon.me/blog/2024-07-18-beam-examples-2)
+- [Part 3 Build Sport Activity Tracker with/without SQL](https://jaehyeon.me/blog/2024-08-01-beam-examples-3)
+- [Part 4 Call RPC Service for Data Augmentation](https://jaehyeon.me/blog/2024-08-15-beam-examples-4)
+- [Part 5 Call RPC Service in Batch using Stateless DoFn](https://jaehyeon.me/blog/2024-09-18-beam-examples-5)
+- [Part 6 Call RPC Service in Batch with Defined Batch Size using Stateful DoFn](https://jaehyeon.me/blog/2024-10-02-beam-examples-6)
+- [Part 7 Separate Droppable Data into Side Output](https://jaehyeon.me/blog/2024-10-24-beam-examples-7)
+- [Part 8 Enhance Sport Activity Tracker with Runner Motivation](https://jaehyeon.me/blog/2024-11-21-beam-examples-8)
+- [Part 9 Develop Batch File Reader and PiSampler using Splittable DoFn](https://jaehyeon.me/blog/2024-12-05-beam-examples-9)
+- [Part 10 Develop Streaming File Reader using Splittable DoFn](https://jaehyeon.me/blog/2024-12-19-beam-examples-10)
