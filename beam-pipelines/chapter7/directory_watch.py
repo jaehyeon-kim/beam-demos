@@ -126,8 +126,7 @@ class DirectoryWatchFn(beam.DoFn):
         ),
     ) -> typing.Iterable[MyFile]:
         new_files = self._get_new_files_if_any(element, tracker)
-        if self._process_new_files(tracker, watermark_estimater, new_files):
-            # return [new_file[0] for new_file in new_files]
+        if self._check_processible(tracker, watermark_estimater, new_files):
             for new_file in new_files:
                 yield new_file[0]
         else:
@@ -154,7 +153,7 @@ class DirectoryWatchFn(beam.DoFn):
                 )
         return new_files
 
-    def _process_new_files(
+    def _check_processible(
         self,
         tracker: DirectoryWatchRestrictionTracker,
         watermark_estimater: ManualWatermarkEstimator,
